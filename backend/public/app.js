@@ -76,7 +76,7 @@ function initApp() {
 }
 
 // --- INITIALIZE MAP ---
-void function initMap() {
+function initMap() {
   map = L.map('map', {
     zoomControl: true,
     fadeAnimation: true
@@ -86,7 +86,7 @@ void function initMap() {
     maxZoom: 19,
     attribution: '© OpenStreetMap contributors'
   }).addTo(map);
-}();
+}
 
 // --- FETCH ALL DEVICES ---
 async function loadDevices() {
