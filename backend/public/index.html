@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kinetix Telematics - Dashboard de Rastreo Premium</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <!-- Custom Styling -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Background Glowing Blobs -->
+  <div class="blob blob-purple"></div>
+  <div class="blob blob-blue"></div>
+
+  <!-- Dashboard Container -->
+  <div class="dashboard-wrapper">
+    
+    <!-- Top Header -->
+    <header class="main-header">
+      <div class="logo-area">
+        <i class="fa-solid fa-satellite-dish brand-icon"></i>
+        <h1>KINETIX<span>TELEMATICS</span></h1>
+      </div>
+      <div class="server-status-bar">
+        <div class="status-indicator">
+          <span class="pulse-dot green" id="ws-status-dot"></span>
+          <span id="ws-status-text">Conectando Servidor...</span>
+        </div>
+        <div class="active-count">
+          <i class="fa-solid fa-microchip"></i>
+          <span id="online-count">0</span> dispositivos activos
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="dashboard-grid">
+      
+      <!-- Left Column: Device Navigation & Administration -->
+      <aside class="sidebar-card glass-panel">
+        <div class="sidebar-header">
+          <h2>Dispositivos</h2>
+          <button class="btn-primary btn-icon" id="btn-add-device" title="Registrar nuevo dispositivo">
+            <i class="fa-solid fa-plus"></i> Registrar
+          </button>
+        </div>
+
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="device-search" placeholder="Buscar por nombre, placa o IMEI...">
+        </div>
+
+        <div class="device-list-container" id="device-list">
+          <!-- Dinámicamente cargados -->
+          <div class="skeleton-loader"></div>
+          <div class="skeleton-loader"></div>
+          <div class="skeleton-loader"></div>
+        </div>
+      </aside>
+
+      <!-- Right Column: Interactive Map and Control Center -->
+      <section class="main-workspace">
+        
+        <!-- Map View -->
+        <div class="map-container glass-panel">
+          <div id="map"></div>
+          <div class="map-overlay-info" id="selected-device-map-info">
+            Selecciona un vehículo para ver sus coordenadas en tiempo real
+          </div>
+        </div>
+
+        <!-- Details & Live Telemetry Controls (Shown when device is selected) -->
+        <div class="control-panel-grid">
+          
+          <!-- Live Telemetry Card -->
+          <div class="glass-panel telemetry-card" id="telemetry-panel">
+            <h3 class="panel-title"><i class="fa-solid fa-chart-simple"></i> Telemetría en Vivo</h3>
+            <div class="no-selection-msg" id="telemetry-empty-msg">
+              <i class="fa-solid fa-circle-info"></i>
+              <p>Ningún vehículo seleccionado para telemetría activa.</p>
+            </div>
+            
+            <div class="telemetry-data-grid hidden" id="telemetry-content">
+              <div class="metric-box">
+                <div class="metric-icon bg-green"><i class="fa-solid fa-gauge"></i></div>
+                <div class="metric-values">
+                  <span class="metric-val" id="telemetry-speed">0.0 km/h</span>
+                  <span class="metric-label">Velocidad</span>
+                </div>
+              </div>
+
+              <div class="metric-box">
+                <div class="metric-icon bg-blue" id="ignition-icon-bg"><i class="fa-solid fa-key" id="ignition-icon"></i></div>
+                <div class="metric-values">
+                  <span class="metric-val" id="telemetry-ignition">APAGADO</span>
+                  <span class="metric-label">Ignición</span>
+                </div>
+              </div>
+
+              <div class="metric-box">
+                <div class="metric-icon bg-purple"><i class="fa-solid fa-battery-three-quarters"></i></div>
+                <div class="metric-values">
+                  <span class="metric-val" id="telemetry-battery">0.0V</span>
+                  <span class="metric-label">Batería Respaldo</span>
+                </div>
+              </div>
+
+              <div class="metric-box">
+                <div class="metric-icon bg-yellow"><i class="fa-solid fa-signal"></i></div>
+                <div class="metric-values">
+                  <span class="metric-val" id="telemetry-rssi">- dBm</span>
+                  <span class="metric-label">Señal Módem</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Remote Commands Card -->
+          <div class="glass-panel commands-card" id="commands-panel">
+            <h3 class="panel-title"><i class="fa-solid fa-sliders"></i> Control de Salidas</h3>
+            
+            <div class="no-selection-msg" id="commands-empty-msg">
+              <i class="fa-solid fa-lock"></i>
+              <p>Selecciona un vehículo en línea para enviar comandos.</p>
+            </div>
+
+            <div class="command-controls hidden" id="commands-content">
+              <div class="command-row">
+                <div class="command-info">
+                  <span class="cmd-title">Corte de Motor (Salida 1)</span>
+                  <span class="cmd-desc">Detiene la marcha o arranque del vehículo de forma remota.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="switch-output-1">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+
+              <div class="command-row">
+                <div class="command-info">
+                  <span class="cmd-title">Alarma / Auxiliar (Salida 2)</span>
+                  <span class="cmd-desc">Activa la sirena local, luces o relevador auxiliar del vehículo.</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="switch-output-2">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Configuration Panel -->
+          <div class="glass-panel config-card" id="config-panel">
+            <h3 class="panel-title"><i class="fa-solid fa-gears"></i> Parámetros de Dispositivo</h3>
+            
+            <div class="no-selection-msg" id="config-empty-msg">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <p>Selecciona un vehículo para configurar.</p>
+            </div>
+
+            <form class="config-form hidden" id="config-content">
+              <div class="form-group">
+                <label for="config-name">Nombre del Vehículo</label>
+                <input type="text" id="config-name" required>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="config-plate">Placa / Matrícula</label>
+                  <input type="text" id="config-plate">
+                </div>
+                <div class="form-group">
+                  <label for="config-interval">Intervalo de Reporte (s)</label>
+                  <input type="number" id="config-interval" min="5" max="3600">
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="config-desc">Descripción / Marca / Modelo</label>
+                <input type="text" id="config-desc">
+              </div>
+              <button type="submit" class="btn-primary" id="btn-save-config">
+                <i class="fa-solid fa-floppy-disk"></i> Guardar Cambios
+              </button>
+            </form>
+          </div>
+
+          <!-- Command Logs -->
+          <div class="glass-panel logs-card">
+            <h3 class="panel-title"><i class="fa-solid fa-list-check"></i> Historial de Comandos Recientes</h3>
+            <div class="logs-container" id="logs-list">
+              <div class="log-placeholder">Selecciona un vehículo para ver sus registros de comandos.</div>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <!-- Registration Modal -->
+  <div class="modal-backdrop hidden" id="modal-register">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h3>Registrar Nuevo Dispositivo</h3>
+        <button class="btn-close" id="modal-close"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="form-register">
+        <div class="form-group">
+          <label for="reg-imei">IMEI del Módem (15 dígitos)</label>
+          <input type="text" id="reg-imei" required pattern="[0-9]{15}" placeholder="Ej. 864205040001234">
+        </div>
+        <div class="form-group">
+          <label for="reg-name">Nombre del Dispositivo</label>
+          <input type="text" id="reg-name" required placeholder="Ej. Camioneta Reparto 3">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="reg-plate">Placa / Patente (Opcional)</label>
+            <input type="text" id="reg-plate" placeholder="Ej. DEF-456">
+          </div>
+          <div class="form-group">
+            <label for="reg-interval">Intervalo Telemetría (s)</label>
+            <input type="number" id="reg-interval" value="30" min="5" max="3600">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="reg-desc">Descripción / Ubicación del Relevador (Opcional)</label>
+          <input type="text" id="reg-desc" placeholder="Ej. Ford Ranger Gris, Relevador corta bomba de combustible">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="modal-cancel">Cancelar</button>
+          <button type="submit" class="btn-primary">Registrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Custom JS -->
+  <script src="app.js"></script>
+</body>
+</html>
