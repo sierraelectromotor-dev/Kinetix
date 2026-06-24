@@ -10,16 +10,73 @@ let lastCommandSent = { 0: null, 1: null }; // Track pending commands per output
 const DEFAULT_CENTER = [4.6097, -74.0817];
 const DEFAULT_ZOOM = 13;
 
+// Helper to get authorization headers
+function getAuthHeaders() {
+  const token = sessionStorage.getItem('kinetix_token') || '';
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
+}
+
 // Initialize elements on load
 document.addEventListener('DOMContentLoaded', () => {
+  setupLoginHandler();
+});
+
+// --- HANDLE LOGIN OVERLAY ---
+function setupLoginHandler() {
+  const loginOverlay = document.getElementById('login-overlay');
+  const formLogin = document.getElementById('form-login');
+  const inputPassword = document.getElementById('login-password');
+  const btnTogglePwd = document.getElementById('btn-toggle-pwd');
+  const loginErrorMsg = document.getElementById('login-error-msg');
+
+  // Toggle password visibility
+  btnTogglePwd.addEventListener('click', () => {
+    const isPassword = inputPassword.type === 'password';
+    inputPassword.type = isPassword ? 'text' : 'password';
+    btnTogglePwd.innerHTML = isPassword ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
+  });
+
+  // Verify stored auth
+  if (sessionStorage.getItem('kinetix_auth') === 'true' && sessionStorage.getItem('kinetix_token')) {
+    loginOverlay.classList.add('hidden');
+    initApp();
+  } else {
+    loginOverlay.classList.remove('hidden');
+  }
+
+  // Handle submit login
+  formLogin.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const pwd = inputPassword.value;
+    
+    // Validar contraseña
+    if (pwd === 'H36&WE1iv@') {
+      sessionStorage.setItem('kinetix_auth', 'true');
+      sessionStorage.setItem('kinetix_token', pwd);
+      loginOverlay.classList.add('hidden');
+      loginErrorMsg.classList.add('hidden');
+      initApp();
+    } else {
+      loginErrorMsg.classList.remove('hidden');
+      inputPassword.value = '';
+      inputPassword.focus();
+    }
+  });
+}
+
+// --- INITIALIZE APPLICATION MODULES ---
+function initApp() {
   initMap();
   loadDevices();
   connectWebSocket();
   setupEventListeners();
-});
+}
 
 // --- INITIALIZE MAP ---
-function initMap() {
+void function initMap() {
   map = L.map('map', {
     zoomControl: true,
     fadeAnimation: true
@@ -29,12 +86,20 @@ function initMap() {
     maxZoom: 19,
     attribution: '© OpenStreetMap contributors'
   }).addTo(map);
-}
+}();
 
 // --- FETCH ALL DEVICES ---
 async function loadDevices() {
   try {
-    const response = await fetch('/api/devices');
+    const response = await fetch('/api/devices', {
+      headers: getAuthHeaders()
+    });
+    
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+
     devices = await response.json();
     renderDeviceList();
     updateMapMarkers();
@@ -146,7 +211,15 @@ async function selectDevice(imei) {
 async function loadCommandLogs(imei) {
   const container = document.getElementById('logs-list');
   try {
-    const response = await fetch(`/api/devices/${imei}/commands?limit=15`);
+    const response = await fetch(`/api/devices/${imei}/commands?limit=15`, {
+      headers: getAuthHeaders()
+    });
+    
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+
     const logs = await response.json();
     
     container.innerHTML = '';
@@ -185,9 +258,16 @@ async function loadCommandLogs(imei) {
 // --- LOAD TELEMETRY HISTORIC AND SHOW DETAILS ---
 async function loadTelemetryHistory(imei) {
   try {
-    const response = await fetch(`/api/devices/${imei}/telemetry?limit=1`);
+    const response = await fetch(`/api/devices/${imei}/telemetry?limit=1`, {
+      headers: getAuthHeaders()
+    });
+
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+
     const history = await response.json();
-    
     const dev = devices.find(d => d.imei === imei);
     
     if (history.length > 0) {
@@ -279,7 +359,8 @@ function resetTelemetryUI() {
 // --- WEBSOCKET CLIENT CONNECTION ---
 function connectWebSocket() {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${wsProtocol}//${window.location.host}`;
+  const token = sessionStorage.getItem('kinetix_token') || '';
+  const wsUrl = `${wsProtocol}//${window.location.host}/?token=${encodeURIComponent(token)}`;
   
   ws = new WebSocket(wsUrl);
 
@@ -299,12 +380,18 @@ function connectWebSocket() {
     }
   };
 
-  ws.onclose = () => {
-    console.warn('[WebSocket] Conexión cerrada. Intentando reconectar en 3s...');
+  ws.onclose = (event) => {
+    console.warn('[WebSocket] Conexión cerrada. Código:', event.code);
     const dot = document.getElementById('ws-status-dot');
     dot.className = 'pulse-dot red';
-    document.getElementById('ws-status-text').textContent = 'Reconectando...';
-    setTimeout(connectWebSocket, 3000);
+    
+    if (event.code === 4001) {
+      document.getElementById('ws-status-text').textContent = 'No autorizado';
+      handleUnauthorized();
+    } else {
+      document.getElementById('ws-status-text').textContent = 'Reconectando...';
+      setTimeout(connectWebSocket, 3000);
+    }
   };
 }
 
@@ -438,7 +525,15 @@ async function updateMapMarkers() {
 
   for (const dev of devices) {
     try {
-      const response = await fetch(`/api/devices/${dev.imei}/telemetry?limit=1`);
+      const response = await fetch(`/api/devices/${dev.imei}/telemetry?limit=1`, {
+        headers: getAuthHeaders()
+      });
+      
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
       const telArr = await response.json();
       if (telArr.length > 0) {
         const tel = telArr[0];
@@ -465,12 +560,17 @@ async function sendCommand(imei, index, state) {
   try {
     const response = await fetch(`/api/devices/${imei}/commands`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         command: 'set_output',
         parameters: { index, state }
       })
     });
+
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
 
     const result = await response.json();
     if (!response.ok) {
@@ -489,6 +589,16 @@ async function sendCommand(imei, index, state) {
       sw.parentElement.classList.remove('loading');
     }
     lastCommandSent[index] = null;
+  }
+}
+
+// --- HANDLE UNAUTHORIZED REQUESTS ---
+function handleUnauthorized() {
+  sessionStorage.removeItem('kinetix_auth');
+  sessionStorage.removeItem('kinetix_token');
+  document.getElementById('login-overlay').classList.remove('hidden');
+  if (ws) {
+    ws.close();
   }
 }
 
@@ -523,7 +633,7 @@ function setupEventListeners() {
     try {
       const response = await fetch('/api/devices', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           imei,
           name,
@@ -532,6 +642,11 @@ function setupEventListeners() {
           config: { interval, speed_limit: 100 }
         })
       });
+
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
 
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Fallo de registro.');
@@ -556,13 +671,13 @@ function setupEventListeners() {
 
     const btn = document.getElementById('btn-save-config');
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...';
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>...';
     btn.disabled = true;
 
     try {
       const response = await fetch(`/api/devices/${selectedImei}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           name,
           plate,
@@ -570,6 +685,11 @@ function setupEventListeners() {
           config: { interval, speed_limit: 100 }
         })
       });
+
+      if (response.status === 401) {
+        handleUnauthorized();
+        return;
+      }
 
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Fallo al guardar.');
@@ -587,6 +707,50 @@ function setupEventListeners() {
     } finally {
       btn.innerHTML = originalText;
       btn.disabled = false;
+    }
+  });
+
+  // Delete Device Button click
+  document.getElementById('btn-delete-device').addEventListener('click', async () => {
+    if (!selectedImei) return;
+    const dev = devices.find(d => d.imei === selectedImei);
+    if (!dev) return;
+    
+    if (confirm(`¿Estás seguro de que deseas eliminar el dispositivo "${dev.name}" (IMEI: ${selectedImei}) de forma permanente?`)) {
+      try {
+        const response = await fetch(`/api/devices/${selectedImei}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+
+        if (response.status === 401) {
+          handleUnauthorized();
+          return;
+        }
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Fallo al eliminar.');
+
+        alert('Dispositivo eliminado exitosamente.');
+
+        // Deseleccionar y limpiar UI
+        selectedImei = null;
+        if (markers.has(dev.imei)) {
+          map.removeLayer(markers.get(dev.imei));
+          markers.delete(dev.imei);
+        }
+        
+        resetTelemetryUI();
+        document.getElementById('telemetry-empty-msg').classList.remove('hidden');
+        document.getElementById('telemetry-content').classList.add('hidden');
+        document.getElementById('config-empty-msg').classList.remove('hidden');
+        document.getElementById('config-content').classList.add('hidden');
+        document.getElementById('selected-device-map-info').textContent = 'Selecciona un vehículo para ver sus coordenadas en tiempo real';
+        
+        await loadDevices();
+      } catch (err) {
+        alert(err.message);
+      }
     }
   });
 

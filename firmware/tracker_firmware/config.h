@@ -7,14 +7,14 @@
 #define CONFIG_H
 
 // --- INFORMACIÓN DE DISPOSITIVO ---
-#define DEVICE_IMEI "864205040001234"
+#define DEVICE_IMEI "869469087955339"
 
 // --- CONFIGURACIÓN DE CONECTIVIDAD WI-FI (PARA PRUEBAS) ---
 #define WIFI_SSID "COVID19_2.4GHZ"
 #define WIFI_PASS "1234567890"
 
 // --- CONFIGURACIÓN DEL SERVIDOR VPS ---
-#define SERVER_IP "192.168.1.100" // Cambiar por la IP pública de tu VPS
+#define SERVER_IP "187.77.3.156" // Cambiar por la IP pública de tu VPS
 #define SERVER_PORT 5000         // Puerto TCP configurado en el backend Node.js
 
 // --- CONFIGURACIÓN DE PINS DEL LILYGO T-CALL A7670 ---

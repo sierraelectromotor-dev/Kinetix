@@ -17,6 +17,30 @@
 </head>
 <body>
 
+  <!-- Login Overlay -->
+  <div class="login-backdrop" id="login-overlay">
+    <div class="login-card glass-panel">
+      <div class="login-header">
+        <i class="fa-solid fa-satellite-dish brand-icon"></i>
+        <h2>KINETIX<span>TELEMATICS</span></h2>
+      </div>
+      <p>Ingrese la contraseña de seguridad para acceder al panel de control.</p>
+      <form id="form-login">
+        <div class="form-group">
+          <label for="login-password">Contraseña</label>
+          <div class="password-input-wrapper">
+            <input type="password" id="login-password" required placeholder="••••••••">
+            <button type="button" class="btn-toggle-password" id="btn-toggle-pwd">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+          </div>
+        </div>
+        <div class="error-msg hidden" id="login-error-msg">Contraseña incorrecta. Inténtelo de nuevo.</div>
+        <button type="submit" class="btn-primary btn-block">Ingresar</button>
+      </form>
+    </div>
+  </div>
+
   <!-- Background Glowing Blobs -->
   <div class="blob blob-purple"></div>
   <div class="blob blob-blue"></div>
@@ -186,9 +210,14 @@
                 <label for="config-desc">Descripción / Marca / Modelo</label>
                 <input type="text" id="config-desc">
               </div>
-              <button type="submit" class="btn-primary" id="btn-save-config">
-                <i class="fa-solid fa-floppy-disk"></i> Guardar Cambios
-              </button>
+              <div class="form-actions-row">
+                <button type="submit" class="btn-primary" id="btn-save-config">
+                  <i class="fa-solid fa-floppy-disk"></i> Guardar
+                </button>
+                <button type="button" class="btn-danger" id="btn-delete-device">
+                  <i class="fa-solid fa-trash-can"></i> Eliminar
+                </button>
+              </div>
             </form>
           </div>
 

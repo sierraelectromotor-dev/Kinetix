@@ -21,6 +21,25 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
+// Middleware de Autenticación para la API REST
+const AUTH_PASSWORD = 'H36&WE1iv@';
+
+function checkAuth(req, res, next) {
+  if (req.path.startsWith('/api')) {
+    const authHeader = req.headers['authorization'];
+    const queryToken = req.query.token;
+    const expectedAuth = `Bearer ${AUTH_PASSWORD}`;
+    
+    if (authHeader === expectedAuth || queryToken === AUTH_PASSWORD) {
+      return next();
+    }
+    return res.status(401).json({ error: 'No autorizado. Contraseña incorrecta.' });
+  }
+  next();
+}
+
+app.use(checkAuth);
+
 // Registro de Sockets TCP activos (key: imei, value: socket)
 const activeSockets = new Map();
 
@@ -39,7 +58,22 @@ async function initDb() {
 // --- WEBSOCKETS (COMUNICACIÓN CON EL DASHBOARD) ---
 const wsClients = new Set();
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  // Proteger conexión WebSocket con token
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    const token = url.searchParams.get('token');
+    if (token !== AUTH_PASSWORD) {
+      console.log('[WebSocket] Conexión rechazada: Token incorrecto.');
+      ws.close(4001, 'No autorizado');
+      return;
+    }
+  } catch (err) {
+    console.error('[WebSocket] Error validando autenticación:', err.message);
+    ws.close(4000, 'Error de autenticación');
+    return;
+  }
+
   console.log('[WebSocket] Nuevo cliente web conectado');
   wsClients.add(ws);
 
