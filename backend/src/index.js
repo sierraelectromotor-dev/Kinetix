@@ -64,7 +64,7 @@ wss.on('connection', (ws, req) => {
     const url = new URL(req.url, 'http://localhost');
     const token = url.searchParams.get('token');
     if (token !== AUTH_PASSWORD) {
-      console.log('[WebSocket] Conexión rechazada: Token incorrecto.');
+      console.log('[WebSocket] Conexión rechazada: Token incorrecto. Recibido:', JSON.stringify(token), 'Esperado:', JSON.stringify(AUTH_PASSWORD), 'URL:', req.url);
       ws.close(4001, 'No autorizado');
       return;
     }
