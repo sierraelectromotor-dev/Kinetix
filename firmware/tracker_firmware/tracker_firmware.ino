@@ -2,17 +2,29 @@
  * Kinetix Tracker - Firmware ESP32 (Híbrido WiFi + GPS)
  * 
  * Este programa utiliza el Wi-Fi del ESP32 para conectarse al servidor TCP de la VPS,
- * y en paralelo se comunica con el módem A7670 por puerto Serial para activar y leer
- * la antena GPS integrada, simulando el funcionamiento final sin necesidad de tarjeta SIM.
+ * y en paralelo se comunica con el módem A7670 por puerto Serial usando la librería
+ * TinyGSM para activar y leer el GPS integrado de forma robusta.
  */
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <HardwareSerial.h>
+#include "utilities.h"
 #include "config.h"
 
-// Instancia de Puerto Serial para comunicarse con el A7670 (Comandos AT del GPS)
-HardwareSerial SerialAT(1);
+// Configuración de la librería TinyGSM
+#define TINY_GSM_RX_BUFFER 1024
+#define SerialMon Serial
+#define TINY_GSM_DEBUG SerialMon
+
+#include <TinyGsmClient.h>
+
+#ifdef DUMP_AT_COMMANDS
+#include <StreamDebugger.h>
+StreamDebugger debugger(SerialAT, SerialMon);
+TinyGsm modem(debugger);
+#else
+TinyGsm modem(SerialAT);
+#endif
 
 // Cliente TCP nativo de ESP32 para conexión por Wi-Fi
 WiFiClient tcpClient;
@@ -35,17 +47,15 @@ int rssi = 99;
 // Declaración de funciones
 void connectToWiFi();
 void powerOnModemGPS();
-bool sendATCommand(const String& cmd, uint32_t timeout, const char* expected_resp = "OK", String* responseOut = nullptr);
 void readGPS();
 void sendTelemetry();
 void checkIncomingData();
 void handleCommand(const String& jsonCmd);
-double convertNmeaToDecimal(String value, char direction);
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n--- RASTREADOR KINETIX (MODO DE PRUEBA WIFI + GPS) ---");
+  Serial.println("\n--- RASTREADOR KINETIX (MODO WIFI + GPS TINYGSM) ---");
 
   // Configurar pines de Entradas/Salidas
   pinMode(PIN_IGNITION, INPUT_PULLUP);
@@ -58,11 +68,12 @@ void setup() {
   // Iniciar conexión Wi-Fi
   connectToWiFi();
 
-  // Iniciar comunicación Serial con el A7670
-  SerialAT.begin(115200, SERIAL_8N1, MODEM_RX, MODEM_TX);
+  // Iniciar comunicación Serial con el A7670 usando pines de utilities.h
+  // MODEM_RX_PIN y MODEM_TX_PIN están definidos para el hardware específico
+  SerialAT.begin(115200, SERIAL_8N1, MODEM_RX_PIN, MODEM_TX_PIN);
   delay(500);
 
-  // Encender el módem A7670 solo para activar la antena GPS (GNSS)
+  // Encender el módem A7670 y activar antena GPS
   powerOnModemGPS();
 }
 
@@ -92,7 +103,7 @@ void loop() {
     }
   }
 
-  // Leer coordenadas de la antena GPS del módem A7670
+  // Leer coordenadas de la antena GPS usando TinyGSM
   readGPS();
 
   // Leer señal de Wi-Fi (como aproximación de RSSI para pruebas)
@@ -139,134 +150,112 @@ void connectToWiFi() {
 // --- ENCENDER EL MÓDEM A7670 Y INICIALIZAR GPS ---
 void powerOnModemGPS() {
   Serial.println("[MODEM] Inicializando módem A7670 para activar GPS...");
-  
-  pinMode(MODEM_FLIGHT, OUTPUT);
-  digitalWrite(MODEM_FLIGHT, HIGH);
-  
-  pinMode(MODEM_PWRKEY, OUTPUT);
-  pinMode(MODEM_RST, OUTPUT);
-  
-  // Pulso de encendido
-  digitalWrite(MODEM_RST, HIGH);
-  digitalWrite(MODEM_PWRKEY, HIGH);
+
+  #ifdef BOARD_POWERON_PIN
+    Serial.println("[MODEM] Activando pin de alimentación BOARD_POWERON_PIN...");
+    pinMode(BOARD_POWERON_PIN, OUTPUT);
+    digitalWrite(BOARD_POWERON_PIN, HIGH);
+  #endif
+
+  // Aplicar Reset físico si está definido
+  #ifdef MODEM_RESET_PIN
+    Serial.println("[MODEM] Aplicando pulso de Reset físico...");
+    pinMode(MODEM_RESET_PIN, OUTPUT);
+    digitalWrite(MODEM_RESET_PIN, !MODEM_RESET_LEVEL); delay(100);
+    digitalWrite(MODEM_RESET_PIN, MODEM_RESET_LEVEL); delay(2600);
+    digitalWrite(MODEM_RESET_PIN, !MODEM_RESET_LEVEL);
+  #endif
+
+  // Desactivar DTR para asegurar que el módem no entre en modo sleep
+  #ifdef MODEM_DTR_PIN
+    Serial.printf("[MODEM] Configurando DTR (Pin %d) a nivel BAJO...\n", MODEM_DTR_PIN);
+    pinMode(MODEM_DTR_PIN, OUTPUT);
+    digitalWrite(MODEM_DTR_PIN, LOW);
+  #endif
+
+  // Pulso de encendido en PWRKEY
+  Serial.println("[MODEM] Enviando pulso de encendido en PWRKEY...");
+  pinMode(BOARD_PWRKEY_PIN, OUTPUT);
+  digitalWrite(BOARD_PWRKEY_PIN, LOW);
   delay(100);
-  digitalWrite(MODEM_PWRKEY, LOW);
-  delay(1500);
-  digitalWrite(MODEM_PWRKEY, HIGH);
-  
-  delay(6000); // Esperar encendido básico
+  digitalWrite(BOARD_PWRKEY_PIN, HIGH);
+  delay(MODEM_POWERON_PULSE_WIDTH_MS);
+  digitalWrite(BOARD_PWRKEY_PIN, LOW);
 
-  // Probar comunicación AT
-  int retries = 5;
-  while (retries > 0) {
-    if (sendATCommand("AT", 1000)) break;
+  // Esperar comunicación AT
+  Serial.println("[MODEM] Probando comunicación con comandos AT...");
+  int retry = 0;
+  while (!modem.testAT(1000)) {
+    Serial.print(".");
+    if (retry++ > 25) {
+      // Si no responde, reintentar pulso PWRKEY
+      Serial.println("\n[MODEM] Reintentando pulso PWRKEY...");
+      digitalWrite(BOARD_PWRKEY_PIN, LOW);
+      delay(100);
+      digitalWrite(BOARD_PWRKEY_PIN, HIGH);
+      delay(MODEM_POWERON_PULSE_WIDTH_MS);
+      digitalWrite(BOARD_PWRKEY_PIN, LOW);
+      retry = 0;
+    }
+  }
+  Serial.println("\n[MODEM] ¡Comunicación AT establecida exitosamente!");
+
+  // Mostrar información del modelo
+  String modemName = modem.getModemName();
+  Serial.print("[MODEM] Modelo de hardware detectado: ");
+  Serial.println(modemName);
+
+  // Activar antena GNSS/GPS integrada
+  Serial.println("[MODEM] Activando receptor GPS/GNSS...");
+  int gpsRetry = 0;
+  while (!modem.enableGPS(MODEM_GPS_ENABLE_GPIO, MODEM_GPS_ENABLE_LEVEL)) {
+    Serial.print(".");
     delay(1000);
-    retries--;
-  }
-
-  sendATCommand("ATE0", 1000);      // Desactivar eco
-  
-  // Activar antena GNSS/GPS
-  Serial.println("[MODEM] Activando módulo GPS (GNSS)...");
-  sendATCommand("AT+CGNSSPWR=1", 2000);
-}
-
-// --- ENVIAR COMANDOS AT AL MÓDEM ---
-bool sendATCommand(const String& cmd, uint32_t timeout, const char* expected_resp, String* responseOut) {
-  while (SerialAT.available()) { SerialAT.read(); }
-
-  SerialAT.println(cmd);
-  
-  String response = "";
-  unsigned long startTime = millis();
-  
-  while (millis() - startTime < timeout) {
-    while (SerialAT.available()) {
-      char c = SerialAT.read();
-      response += c;
+    gpsRetry++;
+    if (gpsRetry > 10) {
+      Serial.println("\n[WARNING] No se pudo activar el GPS en los primeros intentos, reintentando...");
+      gpsRetry = 0;
     }
-    if (response.indexOf(expected_resp) != -1) {
-      break;
-    }
-    delay(10);
   }
+  Serial.println("\n[MODEM] Módulo GPS/GNSS activado con éxito.");
 
-  if (responseOut != nullptr) {
-    *responseOut = response;
-  }
-
-  return (response.indexOf(expected_resp) != -1);
+  // Configurar velocidad del GPS
+  modem.setGPSBaud(115200);
 }
 
 // --- LEER COORDENADAS GPS DEL MÓDEM ---
 void readGPS() {
-  String resp;
-  if (sendATCommand("AT+CGNSSINFO", 1000, "OK", &resp)) {
-    int index = resp.indexOf("+CGNSSINFO:");
-    if (index != -1) {
-      String data = resp.substring(index);
-      data.replace("\r", "");
-      data.replace("\n", "");
-      
-      int commaIndex = 0;
-      String fields[14];
-      for (int i = 0; i < 14; i++) {
-        int nextComma = data.indexOf(',', commaIndex);
-        if (nextComma != -1) {
-          fields[i] = data.substring(commaIndex, nextComma);
-          commaIndex = nextComma + 1;
-        } else {
-          fields[i] = data.substring(commaIndex);
-          break;
-        }
-      }
+  float lat2 = 0.0;
+  float lon2 = 0.0;
+  float speed2 = 0.0;
+  float alt2 = 0.0;
+  int vsat2 = 0;
+  int usat2 = 0;
+  float accuracy2 = 0.0;
+  int year2 = 0, month2 = 0, day2 = 0;
+  int hour2 = 0, min2 = 0, sec2 = 0;
+  uint8_t fixMode = 0;
 
-      fields[0].replace("+CGNSSINFO: ", "");
-      fields[0].trim();
+  // Solicitar ubicación
+  if (modem.getGPS(&fixMode, &lat2, &lon2, &speed2, &alt2, &vsat2, &usat2, &accuracy2,
+                   &year2, &month2, &day2, &hour2, &min2, &sec2)) {
+    latitude = lat2;
+    longitude = lon2;
+    gpsSpeed = speed2; // TinyGSM retorna km/h directamente para este módem
 
-      // Si el módem tiene fijación de satélites
-      if (fields[0] != "0" && fields[0] != "" && fields[4] != "" && fields[6] != "") {
-        latitude = convertNmeaToDecimal(fields[4], fields[5][0]);
-        longitude = convertNmeaToDecimal(fields[6], fields[7][0]);
-        
-        if (fields[11] != "") {
-          gpsSpeed = fields[11].toFloat() * 1.852; // Nudos a km/h
-        } else {
-          gpsSpeed = 0.0;
-        }
-        
-        Serial.print("[GPS] Lat: ");
-        Serial.print(latitude, 6);
-        Serial.print(" | Lng: ");
-        Serial.print(longitude, 6);
-        Serial.print(" | Speed: ");
-        Serial.print(gpsSpeed, 1);
-        Serial.println(" km/h");
-      } else {
-        Serial.println("[GPS] Buscando satélites (Coloca la antena GPS cerca de una ventana)...");
-      }
-    }
+    Serial.print("[GPS] Lat: ");
+    Serial.print(latitude, 6);
+    Serial.print(" | Lng: ");
+    Serial.print(longitude, 6);
+    Serial.print(" | Speed: ");
+    Serial.print(gpsSpeed, 1);
+    Serial.print(" km/h | Mode: ");
+    Serial.print(fixMode);
+    Serial.print(" | Sat: ");
+    Serial.println(vsat2);
+  } else {
+    Serial.println("[GPS] Buscando satélites (sitúe la antena GPS bajo cielo abierto)...");
   }
-}
-
-// --- CONVERTIR COORDENADAS NMEA A GRADOS DECIMALES ---
-double convertNmeaToDecimal(String value, char direction) {
-  int dotIndex = value.indexOf('.');
-  if (dotIndex == -1) return 0.0;
-
-  String minStr = value.substring(dotIndex - 2);
-  String degStr = value.substring(0, dotIndex - 2);
-
-  double degrees = degStr.toFloat();
-  double minutes = minStr.toFloat();
-
-  double decimal = degrees + (minutes / 60.0);
-
-  if (direction == 'S' || direction == 'W') {
-    decimal = -decimal;
-  }
-
-  return decimal;
 }
 
 // --- ENVIAR TELEMETRÍA JSON POR EL CLIENTE TCP (WI-FI) ---

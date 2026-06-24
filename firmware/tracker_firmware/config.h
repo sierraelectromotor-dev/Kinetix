@@ -17,12 +17,7 @@
 #define SERVER_IP "187.77.3.156" // Cambiar por la IP pública de tu VPS
 #define SERVER_PORT 5000         // Puerto TCP configurado en el backend Node.js
 
-// --- CONFIGURACIÓN DE PINS DEL LILYGO T-CALL A7670 ---
-#define MODEM_RX     26
-#define MODEM_TX     27
-#define MODEM_PWRKEY 4
-#define MODEM_RST    5
-#define MODEM_FLIGHT 12 
+
 
 // --- CONFIGURACIÓN DE ENTRADAS Y SALIDAS AUTOMOTRICES ---
 #define PIN_IGNITION 34 
