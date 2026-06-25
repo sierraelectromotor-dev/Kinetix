@@ -9,9 +9,10 @@
 // --- INFORMACIÓN DE DISPOSITIVO ---
 #define DEVICE_IMEI "869469087955339"
 
-// --- CONFIGURACIÓN DE CONECTIVIDAD WI-FI (PARA PRUEBAS) ---
-#define WIFI_SSID "COVID19_2.4GHZ"
-#define WIFI_PASS "1234567890"
+// --- CONFIGURACIÓN DE CONECTIVIDAD CELULAR (CLARO COLOMBIA) ---
+#define CELL_APN  "internet.comcel.com.co"
+#define CELL_USER "comcelweb"
+#define CELL_PASS "comcelweb"
 
 // --- CONFIGURACIÓN DEL SERVIDOR VPS ---
 #define SERVER_IP "187.77.3.156" // Cambiar por la IP pública de tu VPS

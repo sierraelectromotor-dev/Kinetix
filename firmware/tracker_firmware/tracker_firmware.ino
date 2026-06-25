@@ -1,13 +1,12 @@
 /**
- * Kinetix Tracker - Firmware ESP32 (Híbrido WiFi + GPS)
+ * Kinetix Tracker - Firmware ESP32 (Celular GPRS + GPS)
  * 
- * Este programa utiliza el Wi-Fi del ESP32 para conectarse al servidor TCP de la VPS,
- * y en paralelo se comunica con el módem A7670 por puerto Serial usando la librería
- * TinyGSM para activar y leer el GPS integrado de forma robusta.
+ * Este programa utiliza la red celular 2G/4G (según el módulo LilyGo T-Call A7670)
+ * para conectarse a internet vía GPRS y transmitir coordenadas GPS al servidor VPS
+ * utilizando un socket TCP a través de la librería TinyGSM.
  */
 
 #include <Arduino.h>
-#include <WiFi.h>
 #include "utilities.h"
 #include "config.h"
 
@@ -26,8 +25,8 @@ TinyGsm modem(debugger);
 TinyGsm modem(SerialAT);
 #endif
 
-// Cliente TCP nativo de ESP32 para conexión por Wi-Fi
-WiFiClient tcpClient;
+// Cliente TCP celular manejado por TinyGSM
+TinyGsmClient tcpClient(modem);
 
 // Variables de estado global
 String imei = DEVICE_IMEI;
@@ -45,7 +44,6 @@ float gpsSpeed = 0.0;
 int rssi = 99;
 
 // Declaración de funciones
-void connectToWiFi();
 void powerOnModemGPS();
 void readGPS();
 void sendTelemetry();
@@ -55,7 +53,7 @@ void handleCommand(const String& jsonCmd);
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n--- RASTREADOR KINETIX (MODO WIFI + GPS TINYGSM) ---");
+  Serial.println("\n--- RASTREADOR KINETIX (MODO EXCLUSIVO RED CELULAR GPRS) ---");
 
   // Configurar pines de Entradas/Salidas
   pinMode(PIN_IGNITION, INPUT_PULLUP);
@@ -65,11 +63,7 @@ void setup() {
   digitalWrite(PIN_OUTPUT_1, LOW);
   digitalWrite(PIN_OUTPUT_2, LOW);
 
-  // Iniciar conexión Wi-Fi
-  connectToWiFi();
-
   // Iniciar comunicación Serial con el A7670 usando pines de utilities.h
-  // MODEM_RX_PIN y MODEM_TX_PIN están definidos para el hardware específico
   SerialAT.begin(115200, SERIAL_8N1, MODEM_RX_PIN, MODEM_TX_PIN);
   delay(500);
 
@@ -78,41 +72,61 @@ void setup() {
 }
 
 void loop() {
-  // Asegurar conexión Wi-Fi activa
-  if (WiFi.status() != WL_CONNECTED) {
+  // 1. Asegurar registro de red celular de telefonía
+  if (!modem.isNetworkConnected()) {
     isTcpConnected = false;
-    connectToWiFi();
-    return;
+    Serial.println("[CELULAR] Red móvil desconectada. Registrando...");
+    if (!modem.waitForNetwork(10000L)) {
+      Serial.println("[CELULAR] Reintentando registro de red en 5s...");
+      delay(5000);
+      return;
+    }
+    Serial.println("[CELULAR] ¡Conectado a la red celular!");
   }
 
-  // Asegurar conexión TCP activa con la VPS por medio de Wi-Fi
+  // 2. Asegurar conexión a datos móviles GPRS (Internet)
+  if (!modem.isGprsConnected()) {
+    isTcpConnected = false;
+    Serial.print("[CELULAR] Conectando a datos GPRS con APN: ");
+    Serial.println(CELL_APN);
+    if (!modem.gprsConnect(CELL_APN, CELL_USER, CELL_PASS)) {
+      Serial.println("[CELULAR] Error al activar GPRS. Reintentando en 5s...");
+      delay(5000);
+      return;
+    }
+    Serial.println("[CELULAR] ¡Conexión GPRS activa y listo para internet!");
+  }
+
+  // 3. Asegurar socket TCP conectado con la VPS
   if (!tcpClient.connected()) {
     isTcpConnected = false;
-    Serial.print("[TCP] Conectando a servidor VPS en ");
+    Serial.print("[TCP] Conectando a servidor VPS por datos móviles en ");
     Serial.print(SERVER_IP);
     Serial.print(":");
     Serial.println(SERVER_PORT);
     
     if (tcpClient.connect(SERVER_IP, SERVER_PORT)) {
-      Serial.println("[TCP] Conectado exitosamente al Backend por Wi-Fi!");
+      Serial.println("[TCP] ¡Conectado exitosamente al Backend por GPRS!");
       isTcpConnected = true;
     } else {
-      Serial.println("[TCP] Error de conexión al servidor VPS. Reintentando en 3s...");
+      Serial.println("[TCP] Falló conexión TCP. Reintentando en 3s...");
       delay(3000);
       return;
     }
   }
 
-  // Leer coordenadas de la antena GPS usando TinyGSM
+  // 4. Leer coordenadas GPS
   readGPS();
 
-  // Leer señal de Wi-Fi (como aproximación de RSSI para pruebas)
-  rssi = WiFi.RSSI();
+  // 5. Leer señal celular RSSI (0 a 31)
+  rssi = modem.getSignalQuality();
+  Serial.print("[INFO] Señal celular (RSSI): ");
+  Serial.println(rssi);
 
-  // Escuchar comandos entrantes desde el servidor TCP por Wi-Fi
+  // 6. Escuchar comandos entrantes desde el servidor TCP por GPRS
   checkIncomingData();
 
-  // Enviar telemetría periódica
+  // 7. Enviar telemetría periódica
   unsigned long currentMillis = millis();
   if (currentMillis - lastReportTime >= (reportInterval * 1000UL)) {
     lastReportTime = currentMillis;
@@ -124,32 +138,9 @@ void loop() {
   delay(100);
 }
 
-// --- CONECTAR A LA RED WI-FI ---
-void connectToWiFi() {
-  Serial.print("[WIFI] Conectando a SSID: ");
-  Serial.println(WIFI_SSID);
-
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n[WIFI] ¡Conectado con éxito!");
-    Serial.print("[WIFI] Dirección IP Local: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("\n[WIFI] Error al conectar. Se reintentará en el loop principal.");
-  }
-}
-
 // --- ENCENDER EL MÓDEM A7670 Y INICIALIZAR GPS ---
 void powerOnModemGPS() {
-  Serial.println("[MODEM] Inicializando módem A7670 para activar GPS...");
+  Serial.println("[MODEM] Inicializando módem A7670...");
 
   #ifdef BOARD_POWERON_PIN
     Serial.println("[MODEM] Activando pin de alimentación BOARD_POWERON_PIN...");
@@ -188,7 +179,6 @@ void powerOnModemGPS() {
   while (!modem.testAT(1000)) {
     Serial.print(".");
     if (retry++ > 25) {
-      // Si no responde, reintentar pulso PWRKEY
       Serial.println("\n[MODEM] Reintentando pulso PWRKEY...");
       digitalWrite(BOARD_PWRKEY_PIN, LOW);
       delay(100);
@@ -241,7 +231,7 @@ void readGPS() {
                    &year2, &month2, &day2, &hour2, &min2, &sec2)) {
     latitude = lat2;
     longitude = lon2;
-    gpsSpeed = speed2; // TinyGSM retorna km/h directamente para este módem
+    gpsSpeed = speed2;
 
     Serial.print("[GPS] Lat: ");
     Serial.print(latitude, 6);
@@ -258,7 +248,7 @@ void readGPS() {
   }
 }
 
-// --- ENVIAR TELEMETRÍA JSON POR EL CLIENTE TCP (WI-FI) ---
+// --- ENVIAR TELEMETRÍA JSON POR EL CLIENTE TCP (DATOS MÓVILES) ---
 void sendTelemetry() {
   bool ignitionState = (digitalRead(PIN_IGNITION) == LOW);
   float batteryVolts = (analogRead(PIN_BAT_ADC) / 4095.0) * 2.0 * 3.3 * 1.1;
@@ -278,11 +268,11 @@ void sendTelemetry() {
   Serial.print("[TCP Send] Transmitiendo JSON: ");
   Serial.print(json);
 
-  // Enviar directamente al socket TCP por Wi-Fi
+  // Enviar directamente al socket TCP celular
   tcpClient.print(json);
 }
 
-// --- ESCUCHAR COMANDOS TCP ENTRANTES POR WI-FI ---
+// --- ESCUCHAR COMANDOS TCP ENTRANTES POR GPRS ---
 void checkIncomingData() {
   while (tcpClient.available()) {
     String line = tcpClient.readStringUntil('\n');
@@ -296,7 +286,7 @@ void checkIncomingData() {
   }
 }
 
-// --- PROCESAR COMANDO Y ENVIAR RESPUESTA ACK POR WI-FI ---
+// --- PROCESAR COMANDO Y ENVIAR RESPUESTA ACK POR GPRS ---
 void handleCommand(const String& jsonCmd) {
   if (jsonCmd.indexOf("\"cmd\":\"set_output\"") != -1) {
     int idxPos = jsonCmd.indexOf("\"index\":");
@@ -327,7 +317,7 @@ void handleCommand(const String& jsonCmd) {
     Serial.print(index);
     Serial.println(state ? " ACTIVADA" : " DESACTIVADA");
 
-    // Retornar ACK por el socket TCP de Wi-Fi
+    // Retornar ACK por el socket TCP de GPRS
     String ackJson = "{\"imei\":\"" + imei + "\",\"cmd_ack\":\"set_output\",\"index\":" + String(index) + ",\"success\":true}\n";
     tcpClient.print(ackJson);
     Serial.println("[TCP Send] ACK de comando enviado.");
