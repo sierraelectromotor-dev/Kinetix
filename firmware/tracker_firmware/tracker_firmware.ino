@@ -34,6 +34,13 @@ bool isTcpConnected = false;
 unsigned long lastReportTime = 0;
 int reportInterval = DEFAULT_REPORT_INTERVAL;
 
+// Temporizadores para evitar saturación del puerto Serial con comandos AT
+unsigned long lastGpsTime = 0;
+const unsigned long gpsInterval = 3000;    // Leer GPS cada 3 segundos
+
+unsigned long lastRssiTime = 0;
+const unsigned long rssiInterval = 30000;  // Leer RSSI cada 30 segundos
+
 // Estado actual de salidas
 bool outputStates[2] = {false, false};
 
@@ -95,6 +102,10 @@ void loop() {
       return;
     }
     Serial.println("[CELULAR] ¡Conexión GPRS activa y listo para internet!");
+    
+    // Leer señal inicial inmediatamente al conectar
+    rssi = modem.getSignalQuality();
+    lastRssiTime = millis();
   }
 
   // 3. Asegurar socket TCP conectado con la VPS
@@ -108,6 +119,10 @@ void loop() {
     if (tcpClient.connect(SERVER_IP, SERVER_PORT)) {
       Serial.println("[TCP] ¡Conectado exitosamente al Backend por GPRS!");
       isTcpConnected = true;
+      
+      // Enviar reporte inicial inmediatamente al conectar para registrar el IMEI en el servidor
+      sendTelemetry();
+      lastReportTime = millis();
     } else {
       Serial.println("[TCP] Falló conexión TCP. Reintentando en 3s...");
       delay(3000);
@@ -115,18 +130,24 @@ void loop() {
     }
   }
 
-  // 4. Leer coordenadas GPS
-  readGPS();
+  // 4. Leer coordenadas GPS periódicamente (cada 3s)
+  if (millis() - lastGpsTime >= gpsInterval) {
+    lastGpsTime = millis();
+    readGPS();
+  }
 
-  // 5. Leer señal celular RSSI (0 a 31)
-  rssi = modem.getSignalQuality();
-  Serial.print("[INFO] Señal celular (RSSI): ");
-  Serial.println(rssi);
+  // 5. Leer señal celular RSSI periódicamente (cada 30s)
+  if (millis() - lastRssiTime >= rssiInterval) {
+    lastRssiTime = millis();
+    rssi = modem.getSignalQuality();
+    Serial.print("[INFO] Señal celular actualizada (RSSI): ");
+    Serial.println(rssi);
+  }
 
   // 6. Escuchar comandos entrantes desde el servidor TCP por GPRS
   checkIncomingData();
 
-  // 7. Enviar telemetría periódica
+  // 7. Enviar telemetría periódica según intervalo
   unsigned long currentMillis = millis();
   if (currentMillis - lastReportTime >= (reportInterval * 1000UL)) {
     lastReportTime = currentMillis;
@@ -135,7 +156,7 @@ void loop() {
     }
   }
 
-  delay(100);
+  delay(50); // Pequeño delay de cortesía para el procesador
 }
 
 // --- ENCENDER EL MÓDEM A7670 Y INICIALIZAR GPS ---
@@ -244,7 +265,7 @@ void readGPS() {
     Serial.print(" | Sat: ");
     Serial.println(vsat2);
   } else {
-    Serial.println("[GPS] Buscando satélites (sitúe la antena GPS bajo cielo abierto)...");
+    Serial.println("[GPS] Buscando satélites...");
   }
 }
 
