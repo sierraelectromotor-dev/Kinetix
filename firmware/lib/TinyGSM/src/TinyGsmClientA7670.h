@@ -347,16 +347,23 @@ class TinyGsmA7670 :  public TinyGsmA76xx<TinyGsmA7670>,
     return true;
   }
 
-    int16_t modemSend(const void* buff, size_t len, uint8_t mux) {
+  int16_t modemSend(const void* buff, size_t len, uint8_t mux) {
     sendAT(GF("+CIPSEND="), mux, ',', (uint16_t)len);
     if (waitResponse(GF(">")) != 1) { return 0; }
     stream.write(reinterpret_cast<const uint8_t*>(buff), len);
     stream.flush();
-    if (waitResponse(GF(GSM_NL "+CIPSEND:")) != 1) { return 0; }
-    streamSkipUntil(',');  // Skip mux
-    streamSkipUntil(',');  // Skip requested bytes to send
-    // TODO(?):  make sure requested and confirmed bytes match
-    return streamGetIntBefore('\n');
+    
+    // El módem A7670 puede responder con "+CIPSEND:" o directamente con "OK"
+    int8_t res = waitResponse(10000UL, GF(GSM_NL "+CIPSEND:"), GFP(GSM_OK), GFP(GSM_ERROR));
+    if (res == 1) {
+      streamSkipUntil(',');  // Skip mux
+      streamSkipUntil(',');  // Skip requested bytes to send
+      return streamGetIntBefore('\n');
+    } else if (res == 2) {
+      return len; // Éxito directo (retornó OK)
+    } else {
+      return 0; // Error
+    }
   }
 
   size_t modemRead(size_t size, uint8_t mux) {

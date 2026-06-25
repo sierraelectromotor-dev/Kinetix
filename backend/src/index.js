@@ -106,7 +106,9 @@ const tcpServer = net.createServer((socket) => {
   socket.setTimeout(120000); // 2 minutos de inactividad
 
   socket.on('data', async (data) => {
-    buffer += data.toString('utf8');
+    const rawStr = data.toString('utf8');
+    console.log(`[TCP Raw] Recibido de ${socket.remoteAddress}:${socket.remotePort} (${rawStr.length} bytes): ${rawStr.replace(/\n/g, '\\n').replace(/\r/g, '\\r')}`);
+    buffer += rawStr;
     let newlineIndex = buffer.indexOf('\n');
 
     while (newlineIndex !== -1) {
