@@ -14,6 +14,7 @@
 #define TINY_GSM_RX_BUFFER 1024
 #define SerialMon Serial
 #define TINY_GSM_DEBUG SerialMon
+#define DUMP_AT_COMMANDS // Habilitar depuración de comandos AT para ver la negociación interna
 
 #include <TinyGsmClient.h>
 
@@ -290,7 +291,7 @@ void sendTelemetry() {
   Serial.print(json);
 
   // Enviar directamente al socket TCP celular
-  tcpClient.print(json);
+  tcpClient.write((const uint8_t*)json.c_str(), json.length());
 }
 
 // --- ESCUCHAR COMANDOS TCP ENTRANTES POR GPRS ---
@@ -340,7 +341,7 @@ void handleCommand(const String& jsonCmd) {
 
     // Retornar ACK por el socket TCP de GPRS
     String ackJson = "{\"imei\":\"" + imei + "\",\"cmd_ack\":\"set_output\",\"index\":" + String(index) + ",\"success\":true}\n";
-    tcpClient.print(ackJson);
+    tcpClient.write((const uint8_t*)ackJson.c_str(), ackJson.length());
     Serial.println("[TCP Send] ACK de comando enviado.");
   }
   else if (jsonCmd.indexOf("\"cmd\":\"set_config\"") != -1) {
