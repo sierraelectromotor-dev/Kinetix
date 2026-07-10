@@ -194,8 +194,10 @@ body {
 .dashboard-grid {
   display: grid;
   grid-template-columns: 320px 1fr;
-  gap: 20px;
+  gap: 15px;
   flex: 1;
+  height: calc(100vh - 90px);
+  overflow: hidden;
 }
 
 /* Sidebar Styling */
@@ -411,25 +413,26 @@ body {
 /* Main Workspace */
 .main-workspace {
   display: flex;
-  flex-direction: column;
-  gap: 20px;
-  max-height: calc(100vh - 120px);
-  overflow-y: hidden;
-  padding-right: 4px;
+  position: relative;
+  height: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 /* Map Container */
 .map-container {
-  height: 480px;
-  position: relative;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
   overflow: hidden;
-  flex-shrink: 0;
 }
 
 #map {
   width: 100%;
   height: 100%;
-  border-radius: 16px;
   z-index: 1;
 }
 
@@ -457,21 +460,29 @@ body {
   pointer-events: none;
 }
 
-/* Control Panels Grid */
+/* Control Panels Grid (Floating over map) */
 .control-panel-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 20px;
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 380px;
+  max-height: calc(100% - 30px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
   overflow-y: auto;
-  padding-right: 8px;
-  flex: 1;
+  pointer-events: none;
 }
 
 .control-panel-grid > div {
-  padding: 20px;
-  min-height: 220px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
+  pointer-events: auto;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  backdrop-filter: blur(12px);
+  background: rgba(15, 23, 42, 0.75);
 }
 
 .panel-title {
