@@ -549,6 +549,7 @@ body {
   font-size: 0.95rem;
   font-weight: 700;
   font-family: var(--font-display);
+  white-space: nowrap;
 }
 
 .metric-label {
