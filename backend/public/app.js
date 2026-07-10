@@ -105,7 +105,7 @@ async function loadDevices() {
       return;
     }
 
-    devices = [{imei: '123456789012345', name: 'Mock Car', plate: 'ABC-123', is_online: true, last_ign: true}];
+    devices = await response.json();
     renderDeviceList();
     updateMapMarkers();
     updateOnlineCounter();
