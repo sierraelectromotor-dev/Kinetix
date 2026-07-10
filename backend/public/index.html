@@ -13,7 +13,7 @@
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <!-- Custom Styling -->
-  <link rel="stylesheet" href="style.css?v=2.0">
+  <link rel="stylesheet" href="style.css?v=2.1">
 </head>
 <body>
 
@@ -164,44 +164,7 @@
             </div>
           </div>
 
-          <!-- Configuration Panel -->
-          <div class="glass-panel config-card" id="config-panel">
-            <h3 class="panel-title"><i class="fa-solid fa-gears"></i> Parámetros de Dispositivo</h3>
-            
-            <div class="no-selection-msg" id="config-empty-msg">
-              <i class="fa-solid fa-pen-to-square"></i>
-              <p>Selecciona un vehículo para configurar.</p>
-            </div>
 
-            <form class="config-form hidden" id="config-content">
-              <div class="form-group">
-                <label for="config-name">Nombre del Vehículo</label>
-                <input type="text" id="config-name" required>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="config-plate">Placa / Matrícula</label>
-                  <input type="text" id="config-plate">
-                </div>
-                <div class="form-group">
-                  <label for="config-interval">Intervalo de Reporte (s)</label>
-                  <input type="number" id="config-interval" min="5" max="3600">
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="config-desc">Descripción / Marca / Modelo</label>
-                <input type="text" id="config-desc">
-              </div>
-              <div class="form-actions-row">
-                <button type="submit" class="btn-primary" id="btn-save-config">
-                  <i class="fa-solid fa-floppy-disk"></i> Guardar
-                </button>
-                <button type="button" class="btn-danger" id="btn-delete-device">
-                  <i class="fa-solid fa-trash-can"></i> Eliminar
-                </button>
-              </div>
-            </form>
-          </div>
           
           <!-- History & Journeys Panel -->
           <div class="glass-panel history-card" id="history-panel">
@@ -296,9 +259,45 @@
     </div>
   </div>
 
+  <!-- Configuration Modal -->
+  <div class="modal-backdrop hidden" id="modal-config">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-gears"></i> Parámetros</h3>
+        <button type="button" class="btn-close" id="modal-config-close"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <form id="config-content">
+        <input type="hidden" id="config-imei">
+        <div class="form-group">
+          <label for="config-name">Nombre del Vehículo</label>
+          <input type="text" id="config-name" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="config-plate">Placa / Matrícula</label>
+            <input type="text" id="config-plate">
+          </div>
+          <div class="form-group">
+            <label for="config-interval">Intervalo (s)</label>
+            <input type="number" id="config-interval" min="5" max="3600">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="config-desc">Descripción / Marca / Modelo</label>
+          <input type="text" id="config-desc">
+        </div>
+        <div class="modal-actions form-actions-row" style="margin-top: 15px;">
+          <button type="button" class="btn-secondary" id="modal-config-cancel">Cancelar</button>
+          <button type="button" class="btn-danger" id="btn-delete-device"><i class="fa-solid fa-trash-can"></i> Eliminar</button>
+          <button type="submit" class="btn-primary" id="btn-save-config"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Leaflet Map JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <!-- Custom JS -->
-  <script src="app.js?v=2.0"></script>
+  <script src="app.js?v=2.1"></script>
 </body>
 </html>

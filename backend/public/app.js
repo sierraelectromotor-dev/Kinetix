@@ -170,9 +170,18 @@ function renderDeviceList() {
         <span class="badge ${dev.is_online ? 'online' : 'offline'}">${dev.is_online ? 'Online' : 'Offline'}</span>
         ${dev.last_ign ? '<span class="badge ign">Ignición</span>' : ''}
       </div>
+      <button class="btn-config-device" title="Configurar dispositivo" data-imei="${dev.imei}">
+        <i class="fa-solid fa-gears"></i>
+      </button>
     `;
 
-    item.addEventListener('click', () => selectDevice(dev.imei));
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-config-device')) {
+        openConfigModal(dev.imei);
+      } else {
+        selectDevice(dev.imei);
+      }
+    });
     container.appendChild(item);
   });
 }
@@ -197,18 +206,9 @@ async function selectDevice(imei) {
   // Show panels
   document.getElementById('telemetry-empty-msg').classList.add('hidden');
   document.getElementById('telemetry-content').classList.remove('hidden');
-  
-  document.getElementById('config-empty-msg').classList.add('hidden');
-  document.getElementById('config-content').classList.remove('hidden');
 
   document.getElementById('history-empty-msg').classList.add('hidden');
   document.getElementById('history-content-div').classList.remove('hidden');
-
-  // Fill config form
-  document.getElementById('config-name').value = dev.name;
-  document.getElementById('config-plate').value = dev.plate || '';
-  document.getElementById('config-interval').value = dev.config?.interval || 30;
-  document.getElementById('config-desc').value = dev.description || '';
 
   // Configurar rango de fechas por defecto (Hoy de 00:00 a la hora actual)
   const today = new Date();
@@ -806,6 +806,64 @@ function setupEventListeners() {
 
   // Eliminados los event listeners estáticos de outputs, ahora se generan dinámicamente en updateTelemetryUI.
 
+  // Submit configuration
+  document.getElementById('config-content').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const imei = document.getElementById('config-imei').value;
+    if (!imei) return;
+    
+    const payload = {
+      name: document.getElementById('config-name').value,
+      plate: document.getElementById('config-plate').value,
+      description: document.getElementById('config-desc').value,
+      config: { interval: parseInt(document.getElementById('config-interval').value) }
+    };
+    
+    try {
+      const response = await fetch(`/api/devices/${imei}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (response.ok) {
+        alert('Configuración guardada correctamente.');
+        closeConfigModal();
+        await fetchDevices();
+      } else {
+        alert('Error al guardar configuración');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error de conexión.');
+    }
+  });
+
+  // Delete device
+  document.getElementById('btn-delete-device').addEventListener('click', async () => {
+    const imei = document.getElementById('config-imei').value;
+    if (!imei) return;
+    
+    if (confirm('¿Estás seguro de que deseas eliminar este vehículo? Esto borrará todo su historial y configuración de forma permanente.')) {
+      try {
+        const response = await fetch(`/api/devices/${imei}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        if (response.ok) {
+          alert('Vehículo eliminado.');
+          closeConfigModal();
+          selectedImei = null;
+          await fetchDevices();
+        } else {
+          alert('Error al eliminar el vehículo.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Error de conexión.');
+      }
+    }
+  });
+
   // Consultar Historial de Recorridos
   document.getElementById('form-history-query').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -1152,3 +1210,24 @@ function formatDuration(ms) {
   const remMins = mins % 60;
   return `${hrs}h ${remMins}m`;
 }
+
+// --- CONFIGURATION MODAL LOGIC ---
+function openConfigModal(imei) {
+  const dev = devices.find(d => d.imei === imei);
+  if (!dev) return;
+  
+  document.getElementById('config-imei').value = dev.imei;
+  document.getElementById('config-name').value = dev.name;
+  document.getElementById('config-plate').value = dev.plate || '';
+  document.getElementById('config-interval').value = dev.config?.interval || 30;
+  document.getElementById('config-desc').value = dev.description || '';
+  
+  document.getElementById('modal-config').classList.remove('hidden');
+}
+
+function closeConfigModal() {
+  document.getElementById('modal-config').classList.add('hidden');
+}
+
+document.getElementById('modal-config-close').addEventListener('click', closeConfigModal);
+document.getElementById('modal-config-cancel').addEventListener('click', closeConfigModal);
