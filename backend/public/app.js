@@ -163,8 +163,8 @@ function renderDeviceList() {
         <i class="${iconClass}"></i>
       </div>
       <div class="device-item-details">
-        <span class="device-item-name">${dev.name}</span>
-        <span class="device-item-sub">${dev.plate ? dev.plate + ' • ' : ''}IMEI: ${dev.imei}</span>
+        <span class="device-item-name" style="text-transform: uppercase;">${dev.plate ? dev.plate : 'SIN PLACA'}</span>
+        <span class="device-item-sub">${dev.name}</span>
       </div>
       <div class="device-status-badge">
         <span class="badge ${dev.is_online ? 'online' : 'offline'}">${dev.is_online ? 'Online' : 'Offline'}</span>
@@ -744,9 +744,16 @@ function setupEventListeners() {
   });
 
   // Delete device
-  document.getElementById('btn-delete-device').addEventListener('click', async () => {
+  document.getElementById('btn-delete-device').addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('Delete button clicked');
+    
     const imei = document.getElementById('config-imei').value;
-    if (!imei) return;
+    if (!imei) {
+      console.warn('No IMEI found in config modal');
+      return;
+    }
     
     if (confirm('¿Estás seguro de que deseas eliminar este vehículo? Esto borrará todo su historial y configuración de forma permanente.')) {
       try {
