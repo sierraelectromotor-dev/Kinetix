@@ -709,101 +709,6 @@ function setupEventListeners() {
     }
   });
 
-  // Config form submit
-  document.getElementById('config-content').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!selectedImei) return;
-
-    const name = document.getElementById('config-name').value;
-    const plate = document.getElementById('config-plate').value;
-    const interval = parseInt(document.getElementById('config-interval').value);
-    const description = document.getElementById('config-desc').value;
-
-    const btn = document.getElementById('btn-save-config');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>...';
-    btn.disabled = true;
-
-    try {
-      const response = await fetch(`/api/devices/${selectedImei}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          name,
-          plate,
-          description,
-          config: { interval, speed_limit: 100 }
-        })
-      });
-
-      if (response.status === 401) {
-        handleUnauthorized();
-        return;
-      }
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Fallo al guardar.');
-
-      // Update local state
-      const devIndex = devices.findIndex(d => d.imei === selectedImei);
-      if (devIndex !== -1) {
-        devices[devIndex] = result;
-      }
-      
-      renderDeviceList();
-      alert('Configuración guardada exitosamente y enviada al dispositivo.');
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      btn.innerHTML = originalText;
-      btn.disabled = false;
-    }
-  });
-
-  // Delete Device Button click
-  document.getElementById('btn-delete-device').addEventListener('click', async () => {
-    if (!selectedImei) return;
-    const dev = devices.find(d => d.imei === selectedImei);
-    if (!dev) return;
-    
-    if (confirm(`¿Estás seguro de que deseas eliminar el dispositivo "${dev.name}" (IMEI: ${selectedImei}) de forma permanente?`)) {
-      try {
-        const response = await fetch(`/api/devices/${selectedImei}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders()
-        });
-
-        if (response.status === 401) {
-          handleUnauthorized();
-          return;
-        }
-
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Fallo al eliminar.');
-
-        alert('Dispositivo eliminado exitosamente.');
-
-        // Deseleccionar y limpiar UI
-        selectedImei = null;
-        if (markers.has(dev.imei)) {
-          map.removeLayer(markers.get(dev.imei));
-          markers.delete(dev.imei);
-        }
-        
-        resetTelemetryUI();
-        document.getElementById('telemetry-empty-msg').classList.remove('hidden');
-        document.getElementById('telemetry-content').classList.add('hidden');
-        document.getElementById('config-empty-msg').classList.remove('hidden');
-        document.getElementById('config-content').classList.add('hidden');
-        document.getElementById('selected-device-map-info').textContent = 'Selecciona un vehículo para ver sus coordenadas en tiempo real';
-        
-        await loadDevices();
-      } catch (err) {
-        alert(err.message);
-      }
-    }
-  });
-
   // Eliminados los event listeners estáticos de outputs, ahora se generan dinámicamente en updateTelemetryUI.
 
   // Submit configuration
@@ -828,7 +733,7 @@ function setupEventListeners() {
       if (response.ok) {
         alert('Configuración guardada correctamente.');
         closeConfigModal();
-        await fetchDevices();
+        await loadDevices();
       } else {
         alert('Error al guardar configuración');
       }
@@ -852,8 +757,23 @@ function setupEventListeners() {
         if (response.ok) {
           alert('Vehículo eliminado.');
           closeConfigModal();
-          selectedImei = null;
-          await fetchDevices();
+          
+          if (markers.has(imei)) {
+            map.removeLayer(markers.get(imei));
+            markers.delete(imei);
+          }
+          
+          if (selectedImei === imei) {
+            selectedImei = null;
+            resetTelemetryUI();
+            document.getElementById('telemetry-empty-msg').classList.remove('hidden');
+            document.getElementById('telemetry-content').classList.add('hidden');
+            document.getElementById('history-empty-msg').classList.remove('hidden');
+            document.getElementById('history-content-div').classList.add('hidden');
+            document.getElementById('selected-device-map-info').textContent = 'Selecciona un vehículo para ver sus coordenadas en tiempo real';
+          }
+          
+          await loadDevices();
         } else {
           alert('Error al eliminar el vehículo.');
         }
