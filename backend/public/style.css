@@ -414,7 +414,7 @@ body {
   flex-direction: column;
   gap: 20px;
   max-height: calc(100vh - 120px);
-  overflow-y: auto;
+  overflow-y: hidden;
   padding-right: 4px;
 }
 
@@ -423,6 +423,7 @@ body {
   height: 400px;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 #map {
@@ -461,6 +462,9 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 20px;
+  overflow-y: auto;
+  padding-right: 8px;
+  flex: 1;
 }
 
 .control-panel-grid > div {
