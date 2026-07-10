@@ -14,12 +14,12 @@
 #define TINY_GSM_RX_BUFFER 1024
 #define SerialMon Serial
 #define TINY_GSM_DEBUG SerialMon
-#define DUMP_AT_COMMANDS // Habilitar depuración de comandos AT para ver la negociación interna
+// #define DUMP_AT_COMMANDS // Habilitar depuración de comandos AT para ver la negociación interna
 
-#include <TinyGsmClient.h>
+#include "../lib/TinyGSM/src/TinyGsmClient.h"
 
 #ifdef DUMP_AT_COMMANDS
-#include <StreamDebugger.h>
+#include "../lib/StreamDebugger/StreamDebugger.h"
 StreamDebugger debugger(SerialAT, SerialMon);
 TinyGsm modem(debugger);
 #else
@@ -77,41 +77,51 @@ void setup() {
 
   // Encender el módem A7670 y activar antena GPS
   powerOnModemGPS();
+
+  // Forzar limpieza inicial del socket TCP
+  tcpClient.stop();
 }
 
 void loop() {
-  // 1. Asegurar registro de red celular de telefonía
-  if (!modem.isNetworkConnected()) {
-    isTcpConnected = false;
-    Serial.println("[CELULAR] Red móvil desconectada. Registrando...");
-    if (!modem.waitForNetwork(10000L)) {
-      Serial.println("[CELULAR] Reintentando registro de red en 5s...");
-      delay(5000);
-      return;
-    }
-    Serial.println("[CELULAR] ¡Conectado a la red celular!");
+  // Diagnóstico pasivo (sin enviar comandos AT al módem)
+  static unsigned long lastDebugPrintTime = 0;
+  if (millis() - lastDebugPrintTime >= 10000) {
+    lastDebugPrintTime = millis();
+    Serial.print("[DIAGNOSTICO] isTcpConnectedVar: ");
+    Serial.println(isTcpConnected);
   }
 
-  // 2. Asegurar conexión a datos móviles GPRS (Internet)
-  if (!modem.isGprsConnected()) {
-    isTcpConnected = false;
-    Serial.print("[CELULAR] Conectando a datos GPRS con APN: ");
-    Serial.println(CELL_APN);
-    if (!modem.gprsConnect(CELL_APN, CELL_USER, CELL_PASS)) {
-      Serial.println("[CELULAR] Error al activar GPRS. Reintentando en 5s...");
-      delay(5000);
-      return;
+  // 1. Asegurar conectividad GPRS y socket TCP activo
+  if (!isTcpConnected) {
+    // 1a. Asegurar registro de red celular de telefonía
+    if (!modem.isNetworkConnected()) {
+      Serial.println("[CELULAR] Red móvil desconectada. Registrando...");
+      if (!modem.waitForNetwork(60000L)) {
+        Serial.println("[CELULAR] Reintentando registro de red en 5s...");
+        delay(5000);
+        return;
+      }
+      Serial.println("[CELULAR] ¡Conectado a la red celular!");
     }
-    Serial.println("[CELULAR] ¡Conexión GPRS activa y listo para internet!");
-    
-    // Leer señal inicial inmediatamente al conectar
-    rssi = modem.getSignalQuality();
-    lastRssiTime = millis();
-  }
 
-  // 3. Asegurar socket TCP conectado con la VPS
-  if (!tcpClient.connected()) {
-    isTcpConnected = false;
+    // 1b. Asegurar conexión a datos móviles GPRS (Internet)
+    if (!modem.isGprsConnected()) {
+      Serial.print("[CELULAR] Conectando a datos GPRS con APN: ");
+      Serial.println(CELL_APN);
+      if (!modem.gprsConnect(CELL_APN, CELL_USER, CELL_PASS)) {
+        Serial.println("[CELULAR] Error al activar GPRS. Reintentando en 5s...");
+        delay(5000);
+        return;
+      }
+      Serial.println("[CELULAR] ¡Conexión GPRS activa y listo para internet!");
+      
+      // Leer señal inicial inmediatamente al conectar
+      rssi = modem.getSignalQuality();
+      lastRssiTime = millis();
+    }
+
+    // 1c. Conectar socket TCP a la VPS
+    tcpClient.stop(); // Limpiar socket anterior
     Serial.print("[TCP] Conectando a servidor VPS por datos móviles en ");
     Serial.print(SERVER_IP);
     Serial.print(":");
@@ -131,13 +141,13 @@ void loop() {
     }
   }
 
-  // 4. Leer coordenadas GPS periódicamente (cada 3s)
+  // 2. Leer coordenadas GPS periódicamente (cada 3s)
   if (millis() - lastGpsTime >= gpsInterval) {
     lastGpsTime = millis();
     readGPS();
   }
 
-  // 5. Leer señal celular RSSI periódicamente (cada 30s)
+  // 3. Leer señal celular RSSI periódicamente (cada 30s)
   if (millis() - lastRssiTime >= rssiInterval) {
     lastRssiTime = millis();
     rssi = modem.getSignalQuality();
@@ -145,14 +155,14 @@ void loop() {
     Serial.println(rssi);
   }
 
-  // 6. Escuchar comandos entrantes desde el servidor TCP por GPRS
+  // 4. Escuchar comandos entrantes desde el servidor TCP por GPRS
   checkIncomingData();
 
-  // 7. Enviar telemetría periódica según intervalo
+  // 5. Enviar telemetría periódica según intervalo
   unsigned long currentMillis = millis();
   if (currentMillis - lastReportTime >= (reportInterval * 1000UL)) {
     lastReportTime = currentMillis;
-    if (isTcpConnected && tcpClient.connected()) {
+    if (isTcpConnected) {
       sendTelemetry();
     }
   }
@@ -282,7 +292,9 @@ void sendTelemetry() {
   json += "\"lng\":" + String(longitude, 6) + ",";
   json += "\"ign\":" + String(ignitionState ? "true" : "false") + ",";
   json += "\"bat\":" + String(batteryVolts, 2) + ",";
-  json += "\"speed\":" + String(gpsSpeed, 1) + ",";
+  float reportSpeed = gpsSpeed;
+  if (reportSpeed < 0.0) reportSpeed = 0.0;
+  json += "\"speed\":" + String(reportSpeed, 1) + ",";
   json += "\"outs\":[" + String(outputStates[0] ? "true" : "false") + "," + String(outputStates[1] ? "true" : "false") + "],";
   json += "\"rssi\":" + String(rssi);
   json += "}\n";
@@ -290,12 +302,18 @@ void sendTelemetry() {
   Serial.print("[TCP Send] Transmitiendo JSON: ");
   Serial.print(json);
 
-  // Enviar directamente al socket TCP celular
-  tcpClient.write((const uint8_t*)json.c_str(), json.length());
+  // Enviar directamente al socket TCP celular y verificar bytes transmitidos
+  size_t bytesToSend = json.length();
+  size_t written = tcpClient.write((const uint8_t*)json.c_str(), bytesToSend);
+  if (written < bytesToSend) {
+    Serial.printf("[TCP Send] ERROR: Se enviaron %d de %d bytes. Desconectando socket.\n", written, bytesToSend);
+    isTcpConnected = false;
+  }
 }
 
 // --- ESCUCHAR COMANDOS TCP ENTRANTES POR GPRS ---
 void checkIncomingData() {
+  // Consultar si hay datos en el socket TCP (ya sea en buffer local rx o en el módem)
   while (tcpClient.available()) {
     String line = tcpClient.readStringUntil('\n');
     line.trim();

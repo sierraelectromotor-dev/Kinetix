@@ -9,11 +9,9 @@ def main():
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
         ssh.connect(VPS_IP, username=VPS_USER, password=VPS_PASS, timeout=15)
-        stdin, stdout, stderr = ssh.exec_command("pm2 list")
-        print("=== PM2 LIST ===")
-        print(stdout.read().decode('utf-8', errors='ignore').encode('ascii', errors='ignore').decode('ascii'))
-        print("=== STDERR ===")
-        print(stderr.read().decode('utf-8', errors='ignore').encode('ascii', errors='ignore').decode('ascii'))
+        stdin, stdout, stderr = ssh.exec_command("ss -tap")
+        print("=== PROCESS PORT BINDINGS ===")
+        print(stdout.read().decode('utf-8'))
     except Exception as e:
         print(f"Error: {e}")
     finally:

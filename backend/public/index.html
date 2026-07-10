@@ -220,6 +220,47 @@
               </div>
             </form>
           </div>
+          
+          <!-- History & Journeys Panel -->
+          <div class="glass-panel history-card" id="history-panel">
+            <h3 class="panel-title"><i class="fa-solid fa-route"></i> Historial de Recorridos</h3>
+            
+            <div class="no-selection-msg" id="history-empty-msg">
+              <i class="fa-solid fa-calendar-days"></i>
+              <p>Selecciona un vehículo para consultar su historial de rutas.</p>
+            </div>
+
+            <div class="history-content hidden" id="history-content-div">
+              <form class="history-form" id="form-history-query">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="history-start">Desde</label>
+                    <input type="datetime-local" id="history-start" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="history-end">Hasta</label>
+                    <input type="datetime-local" id="history-end" required>
+                  </div>
+                </div>
+                <button type="submit" class="btn-primary btn-block" id="btn-query-history">
+                  <i class="fa-solid fa-magnifying-glass-location"></i> Consultar Recorridos
+                </button>
+              </form>
+
+              <div class="history-results-summary hidden" id="history-results-summary">
+                <div class="summary-meta">
+                  Distancia total: <span id="history-total-distance">0.0 km</span> • Viajes: <span id="history-total-trips">0</span>
+                </div>
+                <button type="button" class="btn-secondary btn-icon" id="btn-clear-history-map" title="Limpiar Mapa">
+                  <i class="fa-solid fa-map-pin"></i> Limpiar Mapa
+                </button>
+              </div>
+
+              <div class="history-events-list" id="history-events-list">
+                <!-- Eventos generados dinámicamente -->
+              </div>
+            </div>
+          </div>
 
           <!-- Command Logs -->
           <div class="glass-panel logs-card">

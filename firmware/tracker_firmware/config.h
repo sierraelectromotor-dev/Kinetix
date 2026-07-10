@@ -11,8 +11,8 @@
 
 // --- CONFIGURACIÓN DE CONECTIVIDAD CELULAR (CLARO COLOMBIA) ---
 #define CELL_APN  "internet.comcel.com.co"
-#define CELL_USER "comcelweb"
-#define CELL_PASS "comcelweb"
+#define CELL_USER ""
+#define CELL_PASS ""
 
 // --- CONFIGURACIÓN DEL SERVIDOR VPS ---
 #define SERVER_IP "187.77.3.156" // Cambiar por la IP pública de tu VPS

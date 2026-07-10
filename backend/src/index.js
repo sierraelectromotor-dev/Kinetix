@@ -141,21 +141,27 @@ const tcpServer = net.createServer((socket) => {
   socket.on('close', async () => {
     console.log(`[TCP Close] Conexión cerrada con ${socket.remoteAddress}`);
     if (socketImei) {
-      activeSockets.delete(socketImei);
-      try {
-        // Actualizar estado en DB
-        await db.query(
-          'UPDATE devices SET is_online = false, last_seen = NOW(), updated_at = NOW() WHERE imei = $1',
-          [socketImei]
-        );
-        // Notificar al frontend
-        broadcastToWebClients({
-          type: 'device_offline',
-          imei: socketImei,
-          timestamp: new Date().toISOString()
-        });
-      } catch (err) {
-        console.error('[TCP/DB Error] Error al desconectar dispositivo:', err.message);
+      // Solo marcar offline si este socket es el registrado actualmente como activo
+      if (activeSockets.get(socketImei) === socket) {
+        activeSockets.delete(socketImei);
+        try {
+          // Actualizar estado en DB
+          await db.query(
+            'UPDATE devices SET is_online = false, last_seen = NOW(), updated_at = NOW() WHERE imei = $1',
+            [socketImei]
+          );
+          // Notificar al frontend
+          broadcastToWebClients({
+            type: 'device_offline',
+            imei: socketImei,
+            timestamp: new Date().toISOString()
+          });
+          console.log(`[TCP Register] Dispositivo IMEI ${socketImei} marcado como OFFLINE.`);
+        } catch (err) {
+          console.error('[TCP/DB Error] Error al desconectar dispositivo:', err.message);
+        }
+      } else {
+        console.log(`[TCP Close] Cerrado socket obsoleto para IMEI ${socketImei} (hay una conexión más reciente activa).`);
       }
     }
   });
@@ -191,11 +197,17 @@ const tcpServer = net.createServer((socket) => {
     if (lat !== undefined && lng !== undefined) {
       console.log(`[Telemetry] Dispositivo ${imei}: Lat=${lat}, Lng=${lng}, Ign=${ign}`);
       
+      // Sanitizar velocidad para evitar numeric field overflow (ej. -9999.0 si no hay fix)
+      let cleanSpeed = parseFloat(speed);
+      if (isNaN(cleanSpeed) || cleanSpeed < 0 || cleanSpeed > 999) {
+        cleanSpeed = 0.0;
+      }
+
       // Guardar telemetría histórica
       const result = await db.query(
         `INSERT INTO telemetry (imei, latitude, longitude, ignition, battery, speed, outputs, rssi)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, timestamp`,
-        [imei, lat, lng, !!ign, bat || null, speed || 0.0, outs || [false, false], rssi || null]
+        [imei, lat, lng, !!ign, bat || null, cleanSpeed, outs || [false, false], rssi || null]
       );
       
       const savedTelemetry = result.rows[0];
@@ -336,8 +348,29 @@ app.delete('/api/devices/:imei', async (req, res) => {
 // 5. Obtener histórico de telemetría de un dispositivo
 app.get('/api/devices/:imei/telemetry', async (req, res) => {
   const { imei } = req.params;
-  const limit = req.query.limit || 100;
+  const { start, end } = req.query;
+  const limit = parseInt(req.query.limit) || 2000; // Límite generoso para consultas históricas
   try {
+    if (start || end) {
+      let queryStr = `SELECT * FROM telemetry WHERE imei = $1`;
+      const params = [imei];
+      
+      if (start) {
+        params.push(new Date(start));
+        queryStr += ` AND timestamp >= $${params.length}`;
+      }
+      if (end) {
+        params.push(new Date(end));
+        queryStr += ` AND timestamp <= $${params.length}`;
+      }
+      
+      queryStr += ` ORDER BY timestamp ASC LIMIT $${params.length + 1}`;
+      params.push(limit);
+      
+      const result = await db.query(queryStr, params);
+      return res.json(result.rows);
+    }
+
     const result = await db.query(
       `SELECT * FROM telemetry 
        WHERE imei = $1 
@@ -426,6 +459,14 @@ app.get('/api/devices/:imei/commands', async (req, res) => {
 // --- INICIO DE SERVIDORES ---
 async function start() {
   await initDb();
+
+  // Resetear el estado en línea de todos los dispositivos en la base de datos al arrancar
+  try {
+    await db.query('UPDATE devices SET is_online = false');
+    console.log('[DB] Inicializado estado de todos los dispositivos a offline.');
+  } catch (err) {
+    console.error('[DB Error] No se pudo inicializar el estado de los dispositivos:', err.message);
+  }
 
   // Iniciar servidor HTTP/WebSocket
   server.listen(HTTP_PORT, () => {

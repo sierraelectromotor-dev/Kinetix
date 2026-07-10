@@ -282,6 +282,7 @@ body {
 .device-item.active {
   background: rgba(6, 182, 212, 0.08);
   border-color: rgba(6, 182, 212, 0.3);
+  border-left: 4px solid var(--accent-cyan);
 }
 
 .device-item-icon {
@@ -675,6 +676,7 @@ input:checked + .slider:before {
 }
 
 .form-group input {
+  width: 100%;
   padding: 8px 10px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--panel-border);
@@ -683,6 +685,7 @@ input:checked + .slider:before {
   font-family: var(--font-body);
   font-size: 0.8rem;
   outline: none;
+  color-scheme: dark;
 }
 
 .form-group input:focus {
@@ -901,14 +904,11 @@ input:checked + .slider:before {
 /* Offline Panel adjustments */
 .offline-panel {
   opacity: 0.6;
-  position: relative;
 }
 
-.offline-panel::after {
-  content: "DISPOSITIVO FUERA DE LÍNEA";
-  position: absolute;
-  top: 12px;
-  right: 12px;
+.offline-panel .panel-title::after {
+  content: "FUERA DE LÍNEA";
+  margin-left: auto;
   font-size: 0.65rem;
   font-weight: 800;
   background: rgba(239, 68, 68, 0.15);
@@ -1109,5 +1109,146 @@ input:checked + .slider:before {
     gap: 6px;
   }
 }
+
+/* Route History Panel Styles */
+.history-card {
+  grid-column: span 2;
+}
+
+@media (max-width: 900px) {
+  .history-card {
+    grid-column: span 1;
+  }
+}
+
+.history-content {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  flex: 1;
+}
+
+.history-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 15px;
+  border-radius: 10px;
+}
+
+.history-results-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
+.summary-meta {
+  font-weight: 500;
+}
+
+.summary-meta span {
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+.history-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: 250px;
+  padding-right: 4px;
+}
+
+.history-event-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all var(--transition-fast);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.history-event-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.history-event-item.active {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.25);
+}
+
+.history-event-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.history-event-item.stop .history-event-icon {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--accent-red);
+}
+
+.history-event-item.stop:hover {
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.history-event-item.trip .history-event-icon {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--accent-green);
+}
+
+.history-event-item.trip:hover {
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.history-event-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-event-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.history-event-time {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.history-event-meta {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: right;
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.history-event-meta .sub-meta {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  font-weight: normal;
+}
+
 
 

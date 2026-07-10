@@ -5,6 +5,9 @@ let map = null;
 const markers = new Map();
 let ws = null;
 let lastCommandSent = { 0: null, 1: null }; // Track pending commands per output
+let historyFeatureGroup = null; // Leaflet layer group for routes
+let historyEvents = []; // Trips and stops parsed from querying range
+let activeHistoryEventIndex = null;
 
 // Default Map Center (Bogotá, Colombia - can center anywhere)
 const DEFAULT_CENTER = [4.6097, -74.0817];
@@ -86,6 +89,8 @@ function initMap() {
     maxZoom: 19,
     attribution: '© OpenStreetMap contributors'
   }).addTo(map);
+
+  historyFeatureGroup = L.featureGroup().addTo(map);
 }
 
 // --- FETCH ALL DEVICES ---
@@ -196,11 +201,31 @@ async function selectDevice(imei) {
   document.getElementById('config-empty-msg').classList.add('hidden');
   document.getElementById('config-content').classList.remove('hidden');
 
+  document.getElementById('history-empty-msg').classList.add('hidden');
+  document.getElementById('history-content-div').classList.remove('hidden');
+
   // Fill config form
   document.getElementById('config-name').value = dev.name;
   document.getElementById('config-plate').value = dev.plate || '';
   document.getElementById('config-interval').value = dev.config?.interval || 30;
   document.getElementById('config-desc').value = dev.description || '';
+
+  // Configurar rango de fechas por defecto (Hoy de 00:00 a la hora actual)
+  const today = new Date();
+  const formatDateTime = (date) => {
+    const pad = (num) => String(num).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+  const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+  document.getElementById('history-start').value = formatDateTime(startOfDay);
+  document.getElementById('history-end').value = formatDateTime(today);
+
+  // Limpiar capas previas del historial en el mapa
+  if (historyFeatureGroup) historyFeatureGroup.clearLayers();
+  document.getElementById('history-results-summary').classList.add('hidden');
+  document.getElementById('history-events-list').innerHTML = '';
+  historyEvents = [];
+  activeHistoryEventIndex = null;
 
   // Load telemetry logs and command logs
   loadCommandLogs(imei);
@@ -767,4 +792,350 @@ function setupEventListeners() {
     this.parentElement.classList.add('loading');
     sendCommand(selectedImei, 1, this.checked);
   });
+
+  // Consultar Historial de Recorridos
+  document.getElementById('form-history-query').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!selectedImei) return;
+    const start = document.getElementById('history-start').value;
+    const end = document.getElementById('history-end').value;
+    queryHistory(selectedImei, start, end);
+  });
+
+  // Limpiar Mapa de Recorridos
+  document.getElementById('btn-clear-history-map').addEventListener('click', () => {
+    if (historyFeatureGroup) historyFeatureGroup.clearLayers();
+    document.querySelectorAll('.history-event-item').forEach(el => el.classList.remove('active'));
+    activeHistoryEventIndex = null;
+  });
+}
+
+// --- QUERY HISTORY & RENDER RESULTS ---
+async function queryHistory(imei, start, end) {
+  const container = document.getElementById('history-events-list');
+  const btn = document.getElementById('btn-query-history');
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Consultando...';
+  btn.disabled = true;
+  
+  if (historyFeatureGroup) historyFeatureGroup.clearLayers();
+  document.getElementById('history-results-summary').classList.add('hidden');
+  container.innerHTML = '';
+  historyEvents = [];
+  activeHistoryEventIndex = null;
+
+  try {
+    const url = `/api/devices/${imei}/telemetry?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+    const response = await fetch(url, {
+      headers: getAuthHeaders()
+    });
+
+    if (response.status === 401) {
+      handleUnauthorized();
+      return;
+    }
+
+    const points = await response.json();
+    if (points.length === 0) {
+      container.innerHTML = '<div class="log-placeholder">Sin reportes de ubicación en este rango de fechas.</div>';
+      return;
+    }
+
+    // Procesar puntos en viajes y paradas
+    historyEvents = parseHistoryEvents(points);
+    
+    // Calcular totales
+    let totalDist = 0;
+    let tripCount = 0;
+    historyEvents.forEach(ev => {
+      if (ev.type === 'trip') {
+        tripCount++;
+        totalDist += calculateTripDistance(ev.points);
+      }
+    });
+
+    // Mostrar resumen
+    document.getElementById('history-total-distance').textContent = `${totalDist.toFixed(2)} km`;
+    document.getElementById('history-total-trips').textContent = tripCount;
+    document.getElementById('history-results-summary').classList.remove('hidden');
+
+    // Renderizar lista de eventos
+    if (historyEvents.length === 0) {
+      container.innerHTML = '<div class="log-placeholder">El dispositivo estuvo sin reportar en este rango.</div>';
+      return;
+    }
+
+    historyEvents.forEach((ev, idx) => {
+      const startTimeStr = new Date(ev.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const endTimeStr = new Date(ev.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const durationStr = formatDuration(ev.durationMs);
+
+      const item = document.createElement('div');
+      item.className = `history-event-item ${ev.type}`;
+      item.dataset.index = idx;
+
+      if (ev.type === 'stop') {
+        item.innerHTML = `
+          <div class="history-event-icon">
+            <i class="fa-solid fa-square-parking"></i>
+          </div>
+          <div class="history-event-details">
+            <span class="history-event-title">Vehículo Detenido / Parada</span>
+            <span class="history-event-time">${startTimeStr} - ${endTimeStr}</span>
+          </div>
+          <div class="history-event-meta">
+            <span>Parado</span>
+            <span class="sub-meta">${durationStr}</span>
+          </div>
+        `;
+      } else {
+        const dist = calculateTripDistance(ev.points);
+        const avgSpeed = ev.durationMs > 0 ? (dist / (ev.durationMs / 3600000)) : 0;
+        item.innerHTML = `
+          <div class="history-event-icon">
+            <i class="fa-solid fa-route"></i>
+          </div>
+          <div class="history-event-details">
+            <span class="history-event-title">En Movimiento / Viaje</span>
+            <span class="history-event-time">${startTimeStr} - ${endTimeStr}</span>
+          </div>
+          <div class="history-event-meta">
+            <span>${dist.toFixed(2)} km</span>
+            <span class="sub-meta">${durationStr} • ~${avgSpeed.toFixed(1)} km/h</span>
+          </div>
+        `;
+      }
+
+      item.addEventListener('click', () => selectHistoryEvent(idx));
+      container.appendChild(item);
+    });
+
+    // Dibujar ruta completa por defecto
+    drawFullRoute(points);
+
+  } catch (err) {
+    console.error('Error cargando historial:', err);
+    container.innerHTML = '<div class="log-placeholder" style="color: var(--accent-red)">Error al consultar historial.</div>';
+  } finally {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  }
+}
+
+// --- SELECT SPECIFIC STOP OR TRIP EVENT ---
+function selectHistoryEvent(index) {
+  activeHistoryEventIndex = index;
+  document.querySelectorAll('.history-event-item').forEach(el => el.classList.remove('active'));
+  const activeEl = document.querySelector(`.history-event-item[data-index="${index}"]`);
+  if (activeEl) activeEl.classList.add('active');
+
+  const ev = historyEvents[index];
+  if (!ev || !historyFeatureGroup) return;
+
+  // Limpiar mapa antes de dibujar el evento seleccionado
+  historyFeatureGroup.clearLayers();
+
+  if (ev.type === 'stop') {
+    // Dibujar marcador de parada
+    const stopIcon = L.divIcon({
+      className: 'custom-gps-marker stop-marker',
+      html: `
+        <div class="marker-pulse red"></div>
+        <div class="marker-core red" style="background-color: var(--accent-red) !important;"><i class="fa-solid fa-square-parking" style="color: white; font-size: 8px; display: flex; align-items: center; justify-content: center; height: 100%;"></i></div>
+      `,
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+
+    const marker = L.marker([ev.lat, ev.lng], { icon: stopIcon })
+      .bindPopup(`
+        <strong>Vehículo Detenido / Parada</strong><br>
+        <strong>Inicio:</strong> ${ev.start.toLocaleTimeString()}<br>
+        <strong>Fin:</strong> ${ev.end.toLocaleTimeString()}<br>
+        <strong>Duración:</strong> ${formatDuration(ev.durationMs)}
+      `)
+      .addTo(historyFeatureGroup);
+
+    map.setView([ev.lat, ev.lng], 16);
+    marker.openPopup();
+  } else {
+    // Dibujar polilínea del viaje
+    const latlngs = ev.points.map(p => [p.latitude, p.longitude]);
+    
+    const polyline = L.polyline(latlngs, {
+      color: '#10b981', // Verde esmeralda para viajes
+      weight: 6,
+      opacity: 0.9,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(historyFeatureGroup);
+
+    map.fitBounds(polyline.getBounds().pad(0.1));
+
+    // Agregar marcadores de inicio y fin del viaje
+    const startPoint = ev.points[0];
+    const endPoint = ev.points[ev.points.length - 1];
+
+    L.circleMarker([startPoint.latitude, startPoint.longitude], {
+      radius: 6,
+      color: '#ffffff',
+      fillColor: '#3b82f6',
+      fillOpacity: 1,
+      weight: 2
+    }).bindPopup(`<strong>Inicio de Viaje</strong><br>${ev.start.toLocaleTimeString()}`).addTo(historyFeatureGroup);
+
+    L.circleMarker([endPoint.latitude, endPoint.longitude], {
+      radius: 6,
+      color: '#ffffff',
+      fillColor: '#ef4444',
+      fillOpacity: 1,
+      weight: 2
+    }).bindPopup(`<strong>Fin de Viaje</strong><br>${ev.end.toLocaleTimeString()}`).addTo(historyFeatureGroup);
+  }
+}
+
+// --- DRAW FULL ROUTE ON SEARCH ---
+function drawFullRoute(points) {
+  if (!historyFeatureGroup || points.length === 0) return;
+  historyFeatureGroup.clearLayers();
+
+  const latlngs = points.map(p => [p.latitude, p.longitude]);
+  const polyline = L.polyline(latlngs, {
+    color: '#06b6d4', // Cyan para ruta completa
+    weight: 5,
+    opacity: 0.7,
+    dashArray: '5, 8', // Línea punteada elegante
+    lineCap: 'round',
+    lineJoin: 'round'
+  }).addTo(historyFeatureGroup);
+
+  // Agregar marcadores de paradas detectadas en el mapa
+  historyEvents.forEach(ev => {
+    if (ev.type === 'stop') {
+      const stopIcon = L.divIcon({
+        className: 'custom-gps-marker stop-marker-small',
+        html: `<div class="marker-core red" style="background-color: var(--accent-red) !important; width: 10px; height: 10px; border-radius: 50%;"></div>`,
+        iconSize: [10, 10],
+        iconAnchor: [5, 5]
+      });
+
+      L.marker([ev.lat, ev.lng], { icon: stopIcon })
+        .bindPopup(`<strong>Parada:</strong> ${formatDuration(ev.durationMs)}<br>De ${ev.start.toLocaleTimeString()} a ${ev.end.toLocaleTimeString()}`)
+        .addTo(historyFeatureGroup);
+    }
+  });
+
+  map.fitBounds(polyline.getBounds().pad(0.1));
+}
+
+// --- PARSE POINTS INTO TRIPS & STOPS ---
+function parseHistoryEvents(points) {
+  if (points.length === 0) return [];
+  
+  const events = [];
+  let currentGroup = [];
+  let isMoving = parseFloat(points[0].speed) > 2.0 && points[0].ignition;
+  
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const pMoving = parseFloat(p.speed) > 2.0 && p.ignition;
+    
+    if (pMoving === isMoving) {
+      currentGroup.push(p);
+    } else {
+      processGroup(currentGroup, isMoving, events);
+      currentGroup = [p];
+      isMoving = pMoving;
+    }
+  }
+  
+  if (currentGroup.length > 0) {
+    processGroup(currentGroup, isMoving, events);
+  }
+  
+  // Filtrar y combinar paradas muy cortas (menores a 3 minutos) como viajes
+  return filterAndCombineEvents(events);
+}
+
+function processGroup(group, isMoving, events) {
+  const start = new Date(group[0].timestamp);
+  const end = new Date(group[group.length - 1].timestamp);
+  const durationMs = end - start;
+  
+  if (isMoving) {
+    events.push({
+      type: 'trip',
+      points: group,
+      start,
+      end,
+      durationMs
+    });
+  } else {
+    events.push({
+      type: 'stop',
+      lat: group[0].latitude,
+      lng: group[0].longitude,
+      start,
+      end,
+      durationMs
+    });
+  }
+}
+
+function filterAndCombineEvents(events) {
+  const cleanEvents = [];
+  
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    
+    // Si la parada dura menos de 3 minutos, la consideramos parte del viaje (espera de tráfico, semáforo)
+    if (ev.type === 'stop' && ev.durationMs < 180000) {
+      ev.type = 'trip';
+      ev.points = [{ latitude: ev.lat, longitude: ev.lng, speed: 0, timestamp: ev.start.toISOString() }];
+    }
+    
+    if (cleanEvents.length === 0) {
+      cleanEvents.push(ev);
+    } else {
+      const last = cleanEvents[cleanEvents.length - 1];
+      if (last.type === 'trip' && ev.type === 'trip') {
+        last.points = last.points.concat(ev.points || []);
+        last.end = ev.end;
+        last.durationMs = last.end - last.start;
+      } else {
+        cleanEvents.push(ev);
+      }
+    }
+  }
+  
+  return cleanEvents;
+}
+
+// --- HELPER METRIC FUNCTIONS ---
+function calculateTripDistance(points) {
+  let dist = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    dist += getHaversineDistance(points[i], points[i+1]);
+  }
+  return dist;
+}
+
+function getHaversineDistance(p1, p2) {
+  const R = 6371; // radio terrestre en km
+  const dLat = (p2.latitude - p1.latitude) * Math.PI / 180;
+  const dLon = (p2.longitude - p1.longitude) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(p1.latitude * Math.PI / 180) * Math.cos(p2.latitude * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function formatDuration(ms) {
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return `${hrs}h ${remMins}m`;
 }
