@@ -743,53 +743,7 @@ function setupEventListeners() {
     }
   });
 
-  // Delete device
-  document.getElementById('btn-delete-device').addEventListener('click', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('Delete button clicked');
-    
-    const imei = document.getElementById('config-imei').value;
-    if (!imei) {
-      console.warn('No IMEI found in config modal');
-      return;
-    }
-    
-    if (confirm('¿Estás seguro de que deseas eliminar este vehículo? Esto borrará todo su historial y configuración de forma permanente.')) {
-      try {
-        const response = await fetch(`/api/devices/${imei}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders()
-        });
-        if (response.ok) {
-          alert('Vehículo eliminado.');
-          closeConfigModal();
-          
-          if (markers.has(imei)) {
-            map.removeLayer(markers.get(imei));
-            markers.delete(imei);
-          }
-          
-          if (selectedImei === imei) {
-            selectedImei = null;
-            resetTelemetryUI();
-            document.getElementById('telemetry-empty-msg').classList.remove('hidden');
-            document.getElementById('telemetry-content').classList.add('hidden');
-            document.getElementById('history-empty-msg').classList.remove('hidden');
-            document.getElementById('history-content-div').classList.add('hidden');
-            document.getElementById('selected-device-map-info').textContent = 'Selecciona un vehículo para ver sus coordenadas en tiempo real';
-          }
-          
-          await loadDevices();
-        } else {
-          alert('Error al eliminar el vehículo.');
-        }
-      } catch (err) {
-        console.error(err);
-        alert('Error de conexión.');
-      }
-    }
-  });
+  // Eliminada configuracion local de delete para usar funcion global
 
   // Consultar Historial de Recorridos
   document.getElementById('form-history-query').addEventListener('submit', (e) => {
@@ -1158,3 +1112,50 @@ function closeConfigModal() {
 
 document.getElementById('modal-config-close').addEventListener('click', closeConfigModal);
 document.getElementById('modal-config-cancel').addEventListener('click', closeConfigModal);
+
+window.deleteDeviceAction = async function(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  console.log('Delete button clicked natively');
+  
+  const imei = document.getElementById('config-imei').value;
+  if (!imei) {
+    alert('No se pudo identificar el vehículo a eliminar (IMEI no encontrado).');
+    return;
+  }
+  
+  if (confirm('¿Estás seguro de que deseas eliminar este vehículo? Esto borrará todo su historial y configuración de forma permanente.')) {
+    try {
+      const response = await fetch(`/api/devices/${imei}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (response.ok) {
+        alert('Vehículo eliminado con éxito.');
+        closeConfigModal();
+        
+        if (markers.has(imei)) {
+          map.removeLayer(markers.get(imei));
+          markers.delete(imei);
+        }
+        
+        if (selectedImei === imei) {
+          selectedImei = null;
+          resetTelemetryUI();
+          document.getElementById('telemetry-empty-msg').classList.remove('hidden');
+          document.getElementById('telemetry-content').classList.add('hidden');
+          document.getElementById('history-empty-msg').classList.remove('hidden');
+          document.getElementById('history-content-div').classList.add('hidden');
+          document.getElementById('selected-device-map-info').textContent = 'Selecciona un vehículo para ver sus coordenadas en tiempo real';
+        }
+        
+        await loadDevices();
+      } else {
+        alert('Error al eliminar el vehículo en la base de datos.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error de conexión.');
+    }
+  }
+};
