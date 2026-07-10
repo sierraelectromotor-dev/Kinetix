@@ -666,6 +666,7 @@ function setupEventListeners() {
   const closeModal = () => {
     modal.classList.add('hidden');
     document.getElementById('form-register').reset();
+    document.getElementById('reg-error-msg').style.display = 'none';
   };
 
   document.getElementById('modal-close').addEventListener('click', closeModal);
@@ -679,6 +680,9 @@ function setupEventListeners() {
     const plate = document.getElementById('reg-plate').value;
     const interval = parseInt(document.getElementById('reg-interval').value);
     const description = document.getElementById('reg-desc').value;
+
+    const errorBox = document.getElementById('reg-error-msg');
+    errorBox.style.display = 'none';
 
     try {
       const response = await fetch('/api/devices', {
@@ -705,7 +709,8 @@ function setupEventListeners() {
       await loadDevices();
       selectDevice(imei);
     } catch (err) {
-      alert(err.message);
+      errorBox.textContent = err.message;
+      errorBox.style.display = 'block';
     }
   });
 
@@ -724,6 +729,9 @@ function setupEventListeners() {
       config: { interval: parseInt(document.getElementById('config-interval').value) }
     };
     
+    const errorBox = document.getElementById('config-error-msg');
+    errorBox.style.display = 'none';
+    
     try {
       const response = await fetch(`/api/devices/${imei}`, {
         method: 'PUT',
@@ -731,15 +739,17 @@ function setupEventListeners() {
         body: JSON.stringify(payload)
       });
       if (response.ok) {
-        alert('Configuración guardada correctamente.');
+        // Success handling handled gracefully
         closeConfigModal();
         await loadDevices();
       } else {
-        alert('Error al guardar configuración');
+        errorBox.textContent = 'Error al guardar configuración';
+        errorBox.style.display = 'block';
       }
     } catch (err) {
       console.error(err);
-      alert('Error de conexión.');
+      errorBox.textContent = 'Error de conexión.';
+      errorBox.style.display = 'block';
     }
   });
 
@@ -1108,6 +1118,7 @@ function openConfigModal(imei) {
 
 function closeConfigModal() {
   document.getElementById('modal-config').classList.add('hidden');
+  document.getElementById('config-error-msg').style.display = 'none';
 }
 
 document.getElementById('modal-config-close').addEventListener('click', closeConfigModal);
