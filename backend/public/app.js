@@ -346,27 +346,52 @@ function updateTelemetryUI(tel, isOnline) {
   document.getElementById('commands-empty-msg').classList.add('hidden');
   document.getElementById('commands-content').classList.remove('hidden');
 
-  const sw1 = document.getElementById('switch-output-1');
-  const sw2 = document.getElementById('switch-output-2');
+  const container = document.getElementById('dynamic-commands-list');
+  container.innerHTML = '';
 
-  // Only update values if we don't have pending commands that are waiting for response
-  if (!lastCommandSent[0]) {
-    sw1.checked = !!tel.outputs[0];
-    sw1.parentElement.classList.remove('loading');
-  }
-  if (!lastCommandSent[1]) {
-    sw2.checked = !!tel.outputs[1];
-    sw2.parentElement.classList.remove('loading');
+  const outputNames = ['Corte de Motor', 'Alarma / Auxiliar'];
+  const outputDescs = [
+    'Detiene la marcha o arranque del vehículo de forma remota.',
+    'Activa la sirena local, luces o relevador auxiliar del vehículo.'
+  ];
+
+  // Default to at least 2 outputs if not provided
+  const outputsCount = Math.max(tel.outputs ? tel.outputs.length : 0, 2);
+  const outputs = tel.outputs || [];
+
+  for (let i = 0; i < outputsCount; i++) {
+    const isChecked = !!outputs[i];
+    const isPending = !!lastCommandSent[i];
+    const finalChecked = isPending ? lastCommandSent[i].state : isChecked;
+
+    const row = document.createElement('div');
+    row.className = 'command-row';
+    
+    row.innerHTML = `
+      <div class="command-info">
+        <span class="cmd-title">${outputNames[i] || 'Puerto Auxiliar'} (Salida ${i + 1})</span>
+        <span class="cmd-desc">${outputDescs[i] || 'Control remoto configurable.'}</span>
+      </div>
+      <label class="switch ${isPending ? 'loading' : ''}">
+        <input type="checkbox" id="switch-output-${i+1}" ${finalChecked ? 'checked' : ''} ${!isOnline ? 'disabled' : ''}>
+        <span class="slider round"></span>
+      </label>
+    `;
+    
+    container.appendChild(row);
+
+    // Event listener dinámico
+    const checkbox = row.querySelector(`#switch-output-${i+1}`);
+    checkbox.addEventListener('change', function() {
+      if (!selectedImei) return;
+      this.parentElement.classList.add('loading');
+      sendCommand(selectedImei, i, this.checked);
+    });
   }
 
-  // Deshabilitar comandos si está offline
   if (!isOnline) {
-    sw1.disabled = true;
-    sw2.disabled = true;
     document.getElementById('commands-panel').classList.add('offline-panel');
   } else {
-    sw1.disabled = false;
-    sw2.disabled = false;
     document.getElementById('commands-panel').classList.remove('offline-panel');
   }
 }
@@ -779,19 +804,7 @@ function setupEventListeners() {
     }
   });
 
-  // Toggle Output 1 (Engine Cut)
-  document.getElementById('switch-output-1').addEventListener('change', function() {
-    if (!selectedImei) return;
-    this.parentElement.classList.add('loading');
-    sendCommand(selectedImei, 0, this.checked);
-  });
-
-  // Toggle Output 2 (Auxiliary)
-  document.getElementById('switch-output-2').addEventListener('change', function() {
-    if (!selectedImei) return;
-    this.parentElement.classList.add('loading');
-    sendCommand(selectedImei, 1, this.checked);
-  });
+  // Eliminados los event listeners estáticos de outputs, ahora se generan dinámicamente en updateTelemetryUI.
 
   // Consultar Historial de Recorridos
   document.getElementById('form-history-query').addEventListener('submit', (e) => {

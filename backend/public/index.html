@@ -13,7 +13,7 @@
   <!-- Leaflet Map CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <!-- Custom Styling -->
-  <link rel="stylesheet" href="style.css?v=1.4">
+  <link rel="stylesheet" href="style.css?v=1.5">
 </head>
 <body>
 
@@ -158,26 +158,8 @@
             </div>
 
             <div class="command-controls hidden" id="commands-content">
-              <div class="command-row">
-                <div class="command-info">
-                  <span class="cmd-title">Corte de Motor (Salida 1)</span>
-                  <span class="cmd-desc">Detiene la marcha o arranque del vehículo de forma remota.</span>
-                </div>
-                <label class="switch">
-                  <input type="checkbox" id="switch-output-1">
-                  <span class="slider round"></span>
-                </label>
-              </div>
-
-              <div class="command-row">
-                <div class="command-info">
-                  <span class="cmd-title">Alarma / Auxiliar (Salida 2)</span>
-                  <span class="cmd-desc">Activa la sirena local, luces o relevador auxiliar del vehículo.</span>
-                </div>
-                <label class="switch">
-                  <input type="checkbox" id="switch-output-2">
-                  <span class="slider round"></span>
-                </label>
+              <div id="dynamic-commands-list" style="display: flex; flex-direction: column; gap: 16px;">
+                <!-- Switches generados por JS -->
               </div>
             </div>
           </div>
@@ -317,6 +299,6 @@
   <!-- Leaflet Map JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <!-- Custom JS -->
-  <script src="app.js?v=1.3"></script>
+  <script src="app.js?v=1.5"></script>
 </body>
 </html>
