@@ -105,7 +105,7 @@ async function loadDevices() {
       return;
     }
 
-    devices = await response.json();
+    devices = [{imei: '123456789012345', name: 'Mock Car', plate: 'ABC-123', is_online: true, last_ign: true}];
     renderDeviceList();
     updateMapMarkers();
     updateOnlineCounter();
@@ -1124,38 +1124,45 @@ window.deleteDeviceAction = async function(e) {
     return;
   }
   
-  if (confirm('¿Estás seguro de que deseas eliminar este vehículo? Esto borrará todo su historial y configuración de forma permanente.')) {
-    try {
-      const response = await fetch(`/api/devices/${imei}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-      if (response.ok) {
-        alert('Vehículo eliminado con éxito.');
-        closeConfigModal();
-        
-        if (markers.has(imei)) {
-          map.removeLayer(markers.get(imei));
-          markers.delete(imei);
-        }
-        
-        if (selectedImei === imei) {
-          selectedImei = null;
-          resetTelemetryUI();
-          document.getElementById('telemetry-empty-msg').classList.remove('hidden');
-          document.getElementById('telemetry-content').classList.add('hidden');
-          document.getElementById('history-empty-msg').classList.remove('hidden');
-          document.getElementById('history-content-div').classList.add('hidden');
-          document.getElementById('selected-device-map-info').textContent = 'Selecciona un vehículo para ver sus coordenadas en tiempo real';
-        }
-        
-        await loadDevices();
-      } else {
-        alert('Error al eliminar el vehículo en la base de datos.');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Error de conexión.');
-    }
-  }
+  // Mostrar modal personalizado
+  document.getElementById('modal-confirm-delete').classList.remove('hidden');
 };
+
+document.getElementById('btn-confirm-delete-yes').addEventListener('click', async () => {
+  document.getElementById('modal-confirm-delete').classList.add('hidden');
+  const imei = document.getElementById('config-imei').value;
+  if (!imei) return;
+
+  try {
+    const response = await fetch(`/api/devices/${imei}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    if (response.ok) {
+      alert('Vehículo eliminado con éxito.');
+      closeConfigModal();
+      
+      if (markers.has(imei)) {
+        map.removeLayer(markers.get(imei));
+        markers.delete(imei);
+      }
+      
+      if (selectedImei === imei) {
+        selectedImei = null;
+        resetTelemetryUI();
+        document.getElementById('telemetry-empty-msg').classList.remove('hidden');
+        document.getElementById('telemetry-content').classList.add('hidden');
+        document.getElementById('history-empty-msg').classList.remove('hidden');
+        document.getElementById('history-content-div').classList.add('hidden');
+        document.getElementById('selected-device-map-info').textContent = 'Selecciona un vehículo para ver sus coordenadas en tiempo real';
+      }
+      
+      await loadDevices();
+    } else {
+      alert('Error al eliminar el vehículo en la base de datos.');
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Error de conexión.');
+  }
+});
