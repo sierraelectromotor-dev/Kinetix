@@ -513,10 +513,10 @@ function updateMarkerPosition(imei, lat, lng, isOnline, ignition, speed) {
     className: 'custom-gps-marker',
     html: `
       <div class="marker-pulse ${colorClass}"></div>
-      <div class="marker-core ${colorClass}"></div>
+      <div class="marker-core ${colorClass}"><i class="fa-solid fa-car"></i></div>
     `,
-    iconSize: [20, 20],
-    iconAnchor: [10, 10]
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
   });
 
   const dev = devices.find(d => d.imei === imei);
